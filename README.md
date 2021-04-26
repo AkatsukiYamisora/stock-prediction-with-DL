@@ -1,6 +1,9 @@
 # stock-prediction-with-DL
+
 ##深度学习与股票分析预测
+
 ###先开一个坑，慢慢做
+
 data_downloader.py
 
 通过baostock下载上证50，沪深300，中证500的日线数据
