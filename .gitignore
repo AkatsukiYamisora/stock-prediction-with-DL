@@ -1,4 +1,2 @@
 
-data/hs300_history_data.csv
-data/sz50_history_data.csv
-data/zz500_history_data.csv
+*.csv

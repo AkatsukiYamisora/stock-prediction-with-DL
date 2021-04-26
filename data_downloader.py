@@ -8,6 +8,10 @@
 import baostock as bs
 import pandas as pd
 
+# 设置数据下载时间段
+start_date = '2015-01-01'
+end_date = '2020-12-31'
+
 # 登陆系统
 lg = bs.login()
 # 显示登陆返回信息
@@ -26,16 +30,16 @@ for rs, name in zip([sz, hs, zz], ['sz50', 'hs300', 'zz500']):
         rs_stocks.append(rs.get_row_data())
     result = pd.DataFrame(rs_stocks, columns=rs.fields)
     # 结果集输出到csv文件
-    result.to_csv("./data/{}_stocks.csv".format(name), encoding="gbk", index=False)
+    result.to_csv("./data/{}_stocks.csv".format(name), index=False)
     print(result)
 
-    data_list = []
     for code in result['code']:
+        stock_data = []
         print('Downloading ' + code)
         rs = bs.query_history_k_data_plus(code,
                                           "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,"
                                           "tradestatus,pctChg,isST",
-                                          start_date='2015-01-01', end_date='2020-12-31',
+                                          start_date=start_date, end_date=end_date,
                                           frequency="d", adjustflag="3")
         if rs.error_code != '0':
             print('query_history_k_data_plus respond error_code:' + rs.error_code)
@@ -44,12 +48,12 @@ for rs, name in zip([sz, hs, zz], ['sz50', 'hs300', 'zz500']):
         # 打印结果集
         while (rs.error_code == '0') & rs.next():
             # 获取一条记录，将记录合并在一起
-            data_list.append(rs.get_row_data())
-    result2 = pd.DataFrame(data_list, columns=rs.fields)
+            stock_data.append(rs.get_row_data())
+        result2 = pd.DataFrame(stock_data, columns=rs.fields)
 
-    # 结果集输出到csv文件
-    result2.to_csv("./data/{}_history_data.csv".format(name), index=False)
-    print(result2)
+        # 结果集输出到csv文件
+        result2.to_csv("./data/stocks/{}.csv".format(code), index=False)
+        print(result2)
 
 # 登出系统
 bs.logout()
