@@ -13,6 +13,7 @@ start_date = '2014-01-01'
 end_date = '2020-12-31'
 stocks = 'sz50', 'hs300', 'zz500'
 indexes = 'sh.000016', 'sh.000300', 'sh.000905'
+# 不建议修改路径
 data_path = './data/stocks/'
 # 设置是否下载数据
 download_stocks = True
