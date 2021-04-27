@@ -1,2 +1,6 @@
 
 *.csv
+!./data/*.csv
+!./data/stocks/sh.000016.csv
+!./data/stocks/sh.000300.csv
+!./data/stocks/sh.000905.csv
