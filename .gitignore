@@ -1,4 +1,5 @@
 
+/.idea/
 *.csv
 !./data/*.csv
 !./data/stocks/sh.000016.csv
