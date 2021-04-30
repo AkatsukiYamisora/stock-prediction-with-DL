@@ -10,23 +10,20 @@ import matplotlib.pyplot as plt
 
 
 class Backtest:
-    def __init__(self, start_date='2014-01-01', end_date='2020-12-31', index=0, start_cash=30000,
-                 fee=0.0003):
+    def __init__(self, index=0, start_cash=30000, fee=0.0003):
         """
-        设置起止时间
         index: 0:上证 50  1:沪深 300  2:中证 500
         """
-        self.start_date = start_date
-        self.end_date = end_date
         # index选择指数组合
         self.index_name = 'sz50', 'hs300', 'zz500'
         self.indexes = 'sh.000016', 'sh.000300', 'sh.000905'
         # 不建议修改路径
+        self.base_data_path = './data/'
         self.data_path = './data/stocks/'
         # 万三手续费
         self.fee = fee
         # 指数组合内股票名称,代码数据
-        self.stocks = pd.read_csv('./data/{}_stocks.csv'.format(self.index_name[index]))
+        self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name[index]))
         self.stocks_codes = self.stocks['code']
         # 指数日线数据
         self.index = pd.read_csv('{}{}.csv'.format(self.data_path, self.indexes[index]))
