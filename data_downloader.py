@@ -14,6 +14,7 @@ end_date = '2020-12-31'
 stocks = 'sz50', 'hs300', 'zz500'
 indexes = 'sh.000016', 'sh.000300', 'sh.000905'
 # 不建议修改路径
+base_data_path = './data/'
 data_path = './data/stocks/'
 # 设置是否下载数据
 download_stocks = True
@@ -54,7 +55,7 @@ def data_save(raw, csv_name, path=data_path):
 if download_stocks:
     for rs, name in zip((sz, hs, zz), stocks):
         # 获取股票名称与代码
-        result = data_save(rs, name+'_stocks', './data/')
+        result = data_save(rs, name+'_stocks', base_data_path)
 
         for code in result['code']:
             stock_data = []
