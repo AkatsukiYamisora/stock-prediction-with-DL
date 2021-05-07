@@ -7,13 +7,14 @@
 """
 import baostock as bs
 import pandas as pd
+from tqdm import tqdm
 
 # 设置数据下载时间段
-start_date = '2014-01-01'
+start_date = '2018-01-01'
 end_date = '2020-12-31'
 stocks = 'sz50', 'hs300', 'zz500'
 indexes = 'sh.000016', 'sh.000300', 'sh.000905'
-# 不建议修改路径
+# 存储路径
 base_data_path = './data/'
 data_path = './data/stocks/'
 # 设置是否下载数据
@@ -21,6 +22,9 @@ download_stocks = True
 download_indexes = True
 # 设置单只股票下载 填入股票代码
 download_special = ''
+# 下载个股参数列表
+columns = "date,code,open,high,low,close,preclose,volume,amount,adjustflag," \
+          "turn,tradestatus,pctChg,peTTM,psTTM,pcfNcfTTM,pbMRQ,isST"
 
 # 登陆系统
 lg = bs.login()
@@ -48,7 +52,7 @@ def data_save(raw, csv_name, path=data_path):
     df = pd.DataFrame(data, columns=raw.fields)
     # 结果集输出到csv文件
     df.to_csv("{}{}.csv".format(path, csv_name), index=False)
-    print(df)
+    # print(df)
     return df
 
 
@@ -56,13 +60,10 @@ if download_stocks:
     for rs, name in zip((sz, hs, zz), stocks):
         # 获取股票名称与代码
         result = data_save(rs, name+'_stocks', base_data_path)
-
-        for code in result['code']:
+        print('Downloading ' + name)
+        for code in tqdm(result['code']):
             stock_data = []
-            print('Downloading ' + code)
-            rs = bs.query_history_k_data_plus(code,
-                                              "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,"
-                                              "tradestatus,pctChg,isST",
+            rs = bs.query_history_k_data_plus(code, columns,
                                               start_date=start_date, end_date=end_date,
                                               frequency="d", adjustflag="3")
             status(rs)
@@ -77,9 +78,7 @@ if download_indexes:
         data_save(rs, index)
 
 if download_special:
-    rs = bs.query_history_k_data_plus(download_special,
-                                      "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,"
-                                      "tradestatus,pctChg,isST",
+    rs = bs.query_history_k_data_plus(download_special, columns,
                                       start_date=start_date, end_date=end_date, frequency="d")
     status(rs)
     data_save(rs, download_special)
