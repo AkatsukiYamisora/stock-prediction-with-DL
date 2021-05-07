@@ -7,17 +7,20 @@
 """
 import pandas as pd
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+
+from strategy import Strategy
 
 
 class Backtest:
-    def __init__(self, index=0, start_cash=30000, fee=0.0003):
+    def __init__(self, index=0, start_cash=300000, fee=0.0002):
         """
         index: 0:上证 50  1:沪深 300  2:中证 500
         """
         # index选择指数组合
         self.index_name = 'sz50', 'hs300', 'zz500'
         self.indexes = 'sh.000016', 'sh.000300', 'sh.000905'
-        # 不建议修改路径
+        # 存储路径
         self.base_data_path = './data/'
         self.data_path = './data/stocks/'
         # 万三手续费
@@ -58,40 +61,48 @@ class Backtest:
         stocks = stocks.set_index('code')
         return stocks
 
-    def buy(self, stock_codes, trading_date: str) -> bool:
+    def buy(self, stocks_codes) -> bool:
         """
         全仓买入trading date的所有stock codes股票
-        trading date为'yyyy-mm-dd'格式字符串
         """
-        # 读入当前交易日内所有欲购买股票日线数据
-        stocks = self.stocks_data(stock_codes, trading_date)
+        trading_date = self.today[0]
+        # 读入当前交易日内所有待购买股票日线数据
+        stocks = self.stocks_data(stocks_codes, trading_date)
         if stocks.empty:
             return False
         # 预计购买股票数
-        n = len(stock_codes)
+        n = len(stocks_codes)
         # 每只股票可用购买资金
         single = self.cash.loc[trading_date, 'cash'] // n
-        for stock_code in stock_codes:
+        for stock_code in stocks_codes:
             open_price = stocks.loc[stock_code, 'open']
             quantity = ((single / (1+self.fee)) / open_price) // 100
-            self.position.loc[trading_date, stock_code] = quantity * 100
-            self.cash.loc[trading_date] -= open_price * quantity * 100
+            self.position.loc[trading_date, stock_code] += quantity * 100
+            self.cash.loc[trading_date, 'cash'] -= open_price * quantity * 100
         return True
 
-    def sell(self, stock_codes, trading_date: str) -> bool:
+    def sell(self, stocks_codes):
         """
-        空仓trading date的所有stock codes股票
-        trading date为'yyyy-mm-dd'格式字符串
+        空仓trading date的除去stock codes外股票
         """
-        stocks = self.stocks_data(stock_codes, trading_date)
-        if stocks.empty:
-            return False
+        trading_date = self.today[0]
+        # 读入当前交易日内所有股票日线数据
+        stocks = self.stocks_data(self.stocks_codes, trading_date)
+        # 初始化卖出金额
         cash = 0
-        for stock_code in stock_codes:
-            cash += self.position.loc[trading_date, stock_code] * stocks.loc[stock_code, 'open'] * (1-self.fee)
-            self.position.loc[trading_date, stock_code] = 0
-        self.cash.loc[trading_date] += cash
-        return True
+        # 卖出所有不继续持仓的股票并删除欲购买列表中已持仓的股票
+        for stock_code in self.stocks_codes:
+            position = self.position.loc[trading_date, stock_code]
+            if position != 0:
+                if stock_code not in stocks_codes:
+                    # 卖出
+                    cash += position * stocks.loc[stock_code, 'open'] * (1-self.fee)
+                    self.position.loc[trading_date, stock_code] = 0
+                else:
+                    # 去除已选股票中已持仓股票
+                    stocks_codes = stocks_codes.drop(stock_code)
+        self.cash.loc[trading_date, 'cash'] += cash
+        return stocks_codes
 
     def next_day(self) -> str:
         """
@@ -118,7 +129,7 @@ class Backtest:
         # 总收益百分比
         basic_position = self.start_cash
         position = []
-        for trading_date in self.trading_dates:
+        for trading_date in tqdm(self.trading_dates):
             # 读入当前交易日内所有股票日线信息
             stock_data = self.stocks_data(self.stocks_codes, trading_date)
             # 初始化当前拥有总金额为现金金额
@@ -141,12 +152,13 @@ class Backtest:
 
 
 if __name__ == '__main__':
-    bt = Backtest()
-    bt.buy(bt.stocks_codes[:5], bt.today[0])
-    for date in bt.trading_dates:
+    bt = Backtest(index=1)
+    strategy = Strategy(index=1)
+    for date_key, date in tqdm(bt.trading_dates.items()):
+        # 每30交易日调仓一次，每次选账面市值比最大的10只股票
+        if date_key % 30 == 0:
+            chosen = strategy.choose_by_bm(bt.today, 10)
+            to_buy = bt.sell(chosen)
+            bt.buy(to_buy)
         bt.next_day()
-    bt.sell(bt.stocks_codes[:5], bt.today[0])
-    print(bt.cash)
-    print((bt.cash.loc[bt.trading_dates[len(bt.trading_dates)-1], 'cash'] - bt.start_cash)*100/bt.start_cash, end='')
-    print('%')
     bt.draw()
