@@ -152,12 +152,13 @@ class Backtest:
 
 
 if __name__ == '__main__':
-    bt = Backtest(index=1)
-    strategy = Strategy(index=1)
+    sz50, hs300, zz500 = 0, 1, 2
+    bt = Backtest(index=hs300, start_cash=100000000, fee=0.0)
+    strategy = Strategy(index=hs300)
     for date_key, date in tqdm(bt.trading_dates.items()):
-        # 每30交易日调仓一次，每次选账面市值比最大的10只股票
-        if date_key % 30 == 0:
-            chosen = strategy.choose_by_bm(bt.today, 10)
+        # 每10交易日调仓一次，每次选账面市值比最大的总数*0.3只股票
+        if date_key % 10 == 0:
+            chosen = strategy.choose_by_bm(bt.today, 90)
             to_buy = bt.sell(chosen)
             bt.buy(to_buy)
         bt.next_day()
