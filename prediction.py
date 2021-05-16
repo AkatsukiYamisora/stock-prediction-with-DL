@@ -45,8 +45,6 @@ class RNNModel(torch.nn.Module):
 
 class Prediction:
     def __init__(self, data_days=30, index=0, batch_size=50):
-        self.input_columns = 'open', 'high', 'low', 'close', 'preclose', 'volume', 'amount', \
-                             'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ'
         # 策略所需数据天数
         self.data_days = data_days
         # index选择指数组合
@@ -62,8 +60,40 @@ class Prediction:
         self.index = pd.read_csv('{}{}.csv'.format(self.data_path, self.indexes[index]))
         # 交易日str序列
         self.trading_dates = self.index['date']
+        # 一次喂入数据批次
         self.batch_size = batch_size
-        self.rnn = torch.nn.RNN(input_size=(batch_size, data_days, self.input_columns), batch_first=True)
+        # 输入列
+        self.input_columns = 'open', 'high', 'low', 'close', 'preclose', 'volume', 'amount', \
+                             'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ'
+        # RNN类型 输入大小 隐层大小 隐层数
+        rnn_type = 'LSTM'
+        input_size = len(self.input_columns)
+        hidden_size = 10
+        n_layers = data_days
+        # 初始化模型
+        self.model = RNNModel(rnn_type, input_size, hidden_size, n_layers).to(device)
+        # 初始化训练数据
+        self.train_data = pd.DataFrame()
+        for stock_code in self.stocks_codes:
+            stock_data = pd.read_csv('{}{}'.format(self.data_path, stock_code))
+            batches = len(stock_data.index) - 2 * self.data_days
+            if batches <= 0:
+                continue
+            for i in range(batches):
+                predict_high = stock_data.loc[data_days+i, 'high']
+                predict_low = stock_data.loc[data_days+i, 'low']
+                predict_change = stock_data.loc[2*data_days+i, 'close']/stock_data.loc[data_days+i, 'close']
+                # TODO
 
-    def rnn_predict(self, stock_code: str, today: tuple):
+    def get_batch(self):
+        # TODO
         pass
+
+    def train(self):
+        self.model.train()
+        hidden = self.model.init_hidden(self.batch_size)
+        # TODO
+
+    def predict(self, stock_code: str, today: tuple):
+        self.model.eval()
+        # TODO
