@@ -5,7 +5,7 @@
 @author: Yamisora
 @file: strategy.py
 """
-import pandas as pd
+from prediction import *
 
 
 class Strategy:
@@ -28,6 +28,10 @@ class Strategy:
         self.index = pd.read_csv('{}{}.csv'.format(self.data_path, self.indexes[index]))
         # 交易日str序列
         self.trading_dates = self.index['date']
+        # 训练CNN模型
+        self.dataset = StockDataset(index=index)
+        self.prediction = Prediction(batch_size=50)
+        self.prediction.train(self.dataset)
 
     def choose_by_bm(self, today: tuple, number: int):
         """
@@ -64,4 +68,25 @@ class Strategy:
         # print(stocks_data)
         stocks_data.sort_values(by='aver_BM', ascending=False, inplace=True)
         # print(stocks_data.index)
+        return stocks_data.index[0:number]
+
+    def choose_by_cnn(self, today: tuple, number: int):
+        """
+        选择CNN预测未来30天涨幅最高的number只股票
+        """
+        # 第一次买入策略应大于策略所需数据天数
+        if today[1] < self.data_days:
+            return pd.Series(None)
+        # 建立用于计算预测涨跌幅的DF
+        stocks_data = pd.DataFrame(self.stocks_codes)
+        stocks_data['change'] = 0
+        stocks_data = stocks_data.set_index('code')
+        # 预测每只股票未来30天涨跌幅
+        for stock_code in self.stocks_codes:
+            change = self.prediction.predict(stock_code, today)
+            if change != 0:
+                change = change.item()
+            stocks_data.loc[stock_code, 'change'] = change
+        # 排序
+        stocks_data.sort_values(by='change', ascending=False, inplace=True)
         return stocks_data.index[0:number]
