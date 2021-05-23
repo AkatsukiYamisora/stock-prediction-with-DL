@@ -13,13 +13,14 @@ import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import os
 
 # 运行设备
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class StockDataset(Dataset):
-    def __init__(self, data_days=30, index=0):
+    def __init__(self, data_days=30, index=0, remake_data=False):
         super(StockDataset, self).__init__()
         # 存储路径
         self.base_data_path = './data/'
@@ -36,20 +37,26 @@ class StockDataset(Dataset):
         self.input_columns = ('open', 'high', 'low', 'close', 'preclose', 'volume', 'amount',
                               'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ')
         # 数据集
-        self.data = pd.DataFrame()
-        for stock_code in tqdm(self.stocks_codes):
-            stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
-            stock_data = pd.DataFrame(stock_data, columns=self.input_columns)
-            batches = len(stock_data.index) - 2 * self.data_days
-            if batches <= 0:
-                continue
-            # 数据集存入个股训练数据
-            for i in range(batches):
-                # predict_high = stock_data.loc[data_days+i, 'high']
-                # predict_low = stock_data.loc[data_days+i, 'low']
-                predict_change = stock_data.loc[2 * data_days + i, 'close'] / stock_data.loc[data_days + i, 'close']
-                self.data = self.data.append({'data': stock_data[i:i+self.data_days].values, 'label': predict_change},
-                                             ignore_index=True)
+        if not os.path.exists('{}{}.pkl'.format(self.base_data_path, self.index_name[index])):
+            remake_data = True
+        if remake_data:
+            self.data = pd.DataFrame()
+            for stock_code in tqdm(self.stocks_codes):
+                stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
+                stock_data = pd.DataFrame(stock_data, columns=self.input_columns)
+                batches = len(stock_data.index) - 2 * self.data_days
+                if batches <= 0:
+                    continue
+                # 数据集存入个股训练数据
+                for i in range(batches):
+                    # predict_high = stock_data.loc[data_days+i, 'high']
+                    # predict_low = stock_data.loc[data_days+i, 'low']
+                    predict_change = stock_data.loc[2 * data_days + i, 'close'] / stock_data.loc[data_days + i, 'close']
+                    self.data = self.data.append({'data': stock_data[i:i+self.data_days].values,
+                                                  'label': predict_change}, ignore_index=True)
+            self.data.to_pickle('{}{}.pkl'.format(self.base_data_path, self.index_name[index]))
+        else:
+            self.data = pd.read_pickle('{}{}.pkl'.format(self.base_data_path, self.index_name[index]))
 
     def __len__(self):
         """返回整个数据集的大小"""
@@ -132,6 +139,7 @@ class Prediction:
         # index选择指数组合
         self.index_name = 'sz50', 'hs300', 'zz500'
         self.indexes = 'sh.000016', 'sh.000300', 'sh.000905'
+        self.idx = index
         # 存储路径
         self.base_data_path = './data/'
         self.data_path = './data/stocks/'
@@ -148,7 +156,10 @@ class Prediction:
         self.input_columns = ('open', 'high', 'low', 'close', 'preclose', 'volume', 'amount',
                               'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ')
         input_size = len(self.input_columns)
+
+        # 选择cnn模型
         self.model = CNNModel(data_days, input_size).to(device)
+
         # # RNN类型 输入大小 隐层大小 隐层数
         # rnn_type = 'LSTM'
         # input_size = len(self.input_columns)
@@ -156,41 +167,65 @@ class Prediction:
         # n_layers = 1
         # # 初始化模型
         # self.model = RNNModel(rnn_type, input_size, hidden_size, n_layers).to(device)
+
+        # 使用MSE误差
         self.criterion = nn.MSELoss()
+        # 使用Adam优化器 默认参数
         self.optimizer = torch.optim.Adam(self.model.parameters())
 
-    def train(self):
-        train_data = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+    def train(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}{}_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.model = torch.load('{}{}_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+            return
+        # 生成训练数据
+        train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+        # 设置为训练模式
         self.model.train()
         # hidden = self.model.init_hidden(self.batch_size)
-        for data, label in train_data:
-            output = self.model.forward(data)
-            label = label.view(label.size()[0], 1)
-            loss = self.criterion(output, label)
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            print('Train loss: ', loss.item())
+        for epoch in range(epochs):
+            for data, label in tqdm(train_data):
+                # 前向传播 计算结果
+                output = self.model.forward(data)
+                # 使label与输出维度一致
+                label = label.view(label.size()[0], 1)
+                # 计算误差
+                loss = self.criterion(output, label)
+                # 清除梯度记录
+                self.optimizer.zero_grad()
+                # 误差反向传播
+                loss.backward()
+                # 优化器更新参数
+                self.optimizer.step()
+                # print('Train loss: ', loss.item())
+        # 保存训练好的模型
+        torch.save(self.model, '{}{}_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
 
     def predict(self, stock_code: str, today: tuple):
+        # 设置为预测模式
         self.model.eval()
         stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
+        # 当前日期在数据集中序号
         date_index = len(stock_data) - len(self.trading_dates) + today[1]
         if date_index < self.data_days:
             return 0
+        # 生成预测数据
         stock_data = pd.DataFrame(stock_data, columns=self.input_columns)
         stock_data = stock_data[date_index - self.data_days:date_index]
         stock_data = np.reshape(stock_data.values, (1, self.data_days, len(self.input_columns)))
         stock_data = torch.tensor(stock_data, dtype=torch.float32, device=device)
         with torch.no_grad():
+            # 前向传播 输出结果
             output = self.model.forward(stock_data)
             return output
 
 
 if __name__ == '__main__':
-    dataset = StockDataset()
+    dataset = StockDataset(index=1)
     print(len(dataset))
     prediction = Prediction(batch_size=50)
-    prediction.train()
+    prediction.train(dataset)
     out = prediction.predict(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     print(out)
