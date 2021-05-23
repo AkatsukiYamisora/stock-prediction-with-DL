@@ -31,7 +31,7 @@ class Strategy:
         # 训练CNN模型
         self.dataset = StockDataset(index=index)
         self.prediction = Prediction(batch_size=50)
-        self.prediction.train(self.dataset)
+        self.prediction.train_cnn(self.dataset)
 
     def choose_by_bm(self, today: tuple, number: int):
         """
@@ -83,7 +83,7 @@ class Strategy:
         stocks_data = stocks_data.set_index('code')
         # 预测每只股票未来30天涨跌幅
         for stock_code in self.stocks_codes:
-            change = self.prediction.predict(stock_code, today)
+            change = self.prediction.predict_cnn(stock_code, today)
             if change != 0:
                 change = change.item()
             stocks_data.loc[stock_code, 'change'] = change
