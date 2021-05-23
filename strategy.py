@@ -9,7 +9,7 @@ from prediction import *
 
 
 class Strategy:
-    def __init__(self, data_days=30, index=0):
+    def __init__(self, data_days=10, index=0):
         """
         index: 0:上证 50  1:沪深 300  2:中证 500
         """
@@ -72,7 +72,7 @@ class Strategy:
 
     def choose_by_cnn(self, today: tuple, number: int):
         """
-        选择CNN预测未来30天涨幅最高的number只股票
+        选择CNN预测未来data_days天涨幅最高的number只股票
         """
         # 第一次买入策略应大于策略所需数据天数
         if today[1] < self.data_days:
@@ -81,7 +81,7 @@ class Strategy:
         stocks_data = pd.DataFrame(self.stocks_codes)
         stocks_data['change'] = 0
         stocks_data = stocks_data.set_index('code')
-        # 预测每只股票未来30天涨跌幅
+        # 预测每只股票未来data_days天涨跌幅
         for stock_code in self.stocks_codes:
             change = self.prediction.predict_cnn(stock_code, today)
             if change != 0:
