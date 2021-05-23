@@ -16,8 +16,12 @@ strategy.py
 
 按Fama-French三因子模型中的账面市值比因子进行选股（暂定）
 
+用CNN预测模型进行选股
+
 其余策略待更新
 
 prediction.py
+
+使用CNN对股票数据进行预测
 
 使用多种RNN对股票数据进行预测（待更新）
