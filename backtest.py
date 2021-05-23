@@ -116,19 +116,15 @@ class Backtest:
             self.position.loc[self.today[0]] = position
             return self.today[0]
 
-    def draw(self, name='result'):
+    def calculate(self):
         """
-        计算收益折线并绘图
+        计算收益折线
         """
-        # 指数收益百分比
-        basic_index_price = self.index['close'][0]
-        index_price = self.index['close'][::10] / basic_index_price
-
         # 总收益百分比
         basic_position = self.start_cash
         position = []
         for i, trading_date in tqdm(enumerate(self.trading_dates)):
-            if i % 10 != 0:
+            if i % 5 != 0:
                 continue
             # 读入当前交易日内所有股票日线信息
             stock_data = self.stocks_data(self.stocks_codes, trading_date)
@@ -142,16 +138,7 @@ class Backtest:
             position.append(daily_position)
         position = pd.Series(position)
         position /= basic_position
-
-        x = range(0, len(self.trading_dates), 10)
-        plt.rcParams['font.sans-serif'] = ['SimHei']
-        plt.rcParams['axes.unicode_minus'] = False
-        plt.figure(figsize=[30, 10])
-        plt.plot(x, index_price, label='指数收益')
-        plt.plot(x, position, label='选股模型持仓收益')
-        plt.legend()
-        plt.savefig('{}.jpg'.format(name))
-        plt.show()
+        return position
 
 
 if __name__ == '__main__':
@@ -170,5 +157,18 @@ if __name__ == '__main__':
             bt2.buy(to_buy2)
         bt.next_day()
         bt2.next_day()
-    bt.draw('BM_result')
-    bt2.draw('CNN_result')
+    bm_position = bt.calculate()
+    cnn_position = bt2.calculate()
+    # 指数收益百分比
+    basic_index_price = bt.index['close'][0]
+    index_price = bt.index['close'][::5] / basic_index_price
+    x = range(0, len(bt.trading_dates), 5)
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+    plt.figure(figsize=[10, 3])
+    plt.plot(x, index_price, label='指数收益')
+    plt.plot(x, bm_position, label='BM选股模型持仓收益')
+    plt.plot(x, cnn_position, label='CNN选股模型持仓收益')
+    plt.legend()
+    plt.savefig('result.jpg')
+    plt.show()
