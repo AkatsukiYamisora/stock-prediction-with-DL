@@ -20,7 +20,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class StockDataset(Dataset):
-    def __init__(self, data_days=30, index=0, remake_data=False):
+    def __init__(self, data_days=10, index=0, remake_data=False):
         super(StockDataset, self).__init__()
         # 存储路径
         self.base_data_path = './data/'
@@ -70,7 +70,7 @@ class StockDataset(Dataset):
 
 
 class CNNModel(nn.Module):
-    def __init__(self, data_days=30, input_size=13):
+    def __init__(self, data_days=10, input_size=13):
         super(CNNModel, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, 3)  # 输入通道数为1，输出通道数为6
         self.conv2 = nn.Conv2d(6, 16, 3)  # 输入通道数为6，输出通道数为16
@@ -80,10 +80,10 @@ class CNNModel(nn.Module):
 
     def forward(self, x):
         x = x.view(x.size()[0], 1, x.size()[1], x.size()[2])
-        # 输入x (50, 1, 30, 13) -> conv1 (50, 6, 28, 11) -> relu
+        # 输入x (50, 1, 10, 13) -> conv1 (50, 6, 8, 11) -> relu
         x = self.conv1(x)
         x = F.relu(x)
-        # 输入x (50, 6, 28, 11) -> conv2 (50, 16, 26, 9) -> relu
+        # 输入x (50, 6, 8, 11) -> conv2 (50, 16, 6, 9) -> relu
         x = self.conv2(x)
         x = F.relu(x)
         # view函数将张量x变形成一维向量形式，总特征数不变，为全连接层做准备
@@ -95,46 +95,42 @@ class CNNModel(nn.Module):
 
 
 class RNNModel(nn.Module):
-    def __init__(self, rnn_type, input_size, hidden_size, n_layers, dropout=0):
+    def __init__(self, rnn_type, input_size, hidden_size, n_layers):
         super(RNNModel, self).__init__()
         if rnn_type in ['LSTM', 'GRU']:
-            self.rnn = getattr(nn, rnn_type)(input_size, hidden_size, n_layers,
-                                             dropout=dropout, batch_first=True)
+            self.rnn = getattr(nn, rnn_type)(input_size, hidden_size, n_layers, batch_first=True)
         else:
             try:
                 non_linearity = {'RNN_TANH': 'tanh', 'RNN_RELU': 'relu'}[rnn_type]
             except KeyError:
                 raise ValueError("""非可选RNN类型,可选参数:['LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU']""")
-            self.rnn = nn.RNN(input_size, hidden_size, n_layers, nonlinearity=non_linearity,
-                              dropout=dropout, batch_first=True)
-        self.fc = nn.Linear(in_features=hidden_size, out_features=1)
+            self.rnn = nn.RNN(input_size, hidden_size, n_layers, nonlinearity=non_linearity, batch_first=True)
+        self.fc1 = nn.Linear(hidden_size, 120)
+        self.fc2 = nn.Linear(120, 60)
+        self.fc3 = nn.Linear(60, 1)
+        self.norm = nn.BatchNorm1d(10)
 
         self.rnn_type = rnn_type
         self.hidden_size = hidden_size
         self.n_layers = n_layers
 
     def forward(self, x):
+        # h0 = torch.zeros(self.n_layers, x.size(0), self.hidden_size).to(device)
+        # c0 = torch.zeros(self.n_layers, x.size(0), self.hidden_size).to(device)
+        # if self.rnn_type == 'LSTM':
+        #     x, _ = self.rnn(x, (h0, c0))
+        # else:
+        #     x, _ = self.rnn(x, h0)
+        x = self.norm(x)
         x, _ = self.rnn(x)
-        x = F.relu(x)
-        x = self.fc(x[:, -1])
+        x = F.softplus(self.fc1(x[:, -1]))
+        x = F.softplus(self.fc2(x))
+        x = self.fc3(x)
         return x
-
-    # def forward(self, x, hidden):
-    #     output, _ = self.rnn(x, hidden)
-    #     output = self.fc(output)
-    #     return output
-
-    # def init_hidden(self, batch_size):
-    #     weight = next(self.parameters())
-    #     if self.rnn_type == 'LSTM':
-    #         return (weight.new_zeros(batch_size, self.n_layers, self.hidden_size),
-    #                 weight.new_zeros(batch_size, self.n_layers, self.hidden_size))
-    #     else:
-    #         return weight.new_zeros(batch_size, self.n_layers, self.hidden_size)
 
 
 class Prediction:
-    def __init__(self, data_days=30, index=0, batch_size=50):
+    def __init__(self, data_days=10, index=0, batch_size=50):
         # 策略所需数据天数
         self.data_days = data_days
         # index选择指数组合
@@ -163,8 +159,8 @@ class Prediction:
 
         # RNN类型 输入大小 隐层大小 隐层数
         rnn_types = 'LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU'
-        rnn_type = rnn_types[2]
-        hidden_size = 20
+        rnn_type = rnn_types[0]
+        hidden_size = 30
         n_layers = 1
         # 初始化模型
         self.rnn_model = RNNModel(rnn_type, input_size, hidden_size, n_layers).to(device)
@@ -173,7 +169,7 @@ class Prediction:
         self.criterion = nn.MSELoss()
         # 使用Adam优化器 默认参数
         self.cnn_optimizer = torch.optim.Adam(self.cnn_model.parameters())
-        self.rnn_optimizer = torch.optim.Adam(self.rnn_model.parameters())
+        self.rnn_optimizer = torch.optim.Adam(self.rnn_model.parameters(), lr=0.0001)
 
     def train_cnn(self, train_dataset, epochs=2, retrain=False):
         if not os.path.exists('{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
@@ -215,19 +211,24 @@ class Prediction:
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         # 设置为训练模式
         self.rnn_model.train()
-        # hidden = self.model.init_hidden(self.batch_size)
         for epoch in range(epochs):
             for data, label in tqdm(train_data):
                 # 前向传播 计算结果
                 output = self.rnn_model.forward(data)
+                # print(output)
                 # 使label与输出维度一致
                 label = label.view(label.size()[0], 1)
+                # print(label)
                 # 计算误差
                 loss = self.criterion(output, label)
                 # 清除梯度记录
                 self.cnn_optimizer.zero_grad()
                 # 误差反向传播
                 loss.backward()
+                # 梯度裁剪
+                for p in self.rnn_model.parameters():
+                    # print(p.grad.norm())                 # 查看参数p的梯度
+                    torch.nn.utils.clip_grad_norm_(self.rnn_model.parameters(), max_norm=20, norm_type=2)
                 # 优化器更新参数
                 self.cnn_optimizer.step()
                 print('Train loss: ', loss.item())
@@ -269,9 +270,10 @@ class Prediction:
 if __name__ == '__main__':
     dataset = StockDataset(index=1)
     print(len(dataset))
-    prediction = Prediction(batch_size=50)
+    prediction = Prediction(batch_size=5)
     # prediction.train_cnn(dataset)
     # out = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
+    # print(out)
     prediction.train_rnn(dataset, retrain=True)
     out = prediction.predict_rnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     print(out)
