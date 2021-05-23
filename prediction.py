@@ -114,9 +114,10 @@ class RNNModel(nn.Module):
         self.n_layers = n_layers
 
     def forward(self, x):
-        output, _ = self.rnn(x)
-        output = self.fc(output[-1])
-        return output
+        x, _ = self.rnn(x)
+        x = F.relu(x)
+        x = self.fc(x[:, -1])
+        return x
 
     # def forward(self, x, hidden):
     #     output, _ = self.rnn(x, hidden)
@@ -158,54 +159,82 @@ class Prediction:
         input_size = len(self.input_columns)
 
         # 选择cnn模型
-        self.model = CNNModel(data_days, input_size).to(device)
+        self.cnn_model = CNNModel(data_days, input_size).to(device)
 
-        # # RNN类型 输入大小 隐层大小 隐层数
-        # rnn_type = 'LSTM'
-        # input_size = len(self.input_columns)
-        # hidden_size = 20
-        # n_layers = 1
-        # # 初始化模型
-        # self.model = RNNModel(rnn_type, input_size, hidden_size, n_layers).to(device)
+        # RNN类型 输入大小 隐层大小 隐层数
+        rnn_types = 'LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU'
+        rnn_type = rnn_types[2]
+        hidden_size = 20
+        n_layers = 1
+        # 初始化模型
+        self.rnn_model = RNNModel(rnn_type, input_size, hidden_size, n_layers).to(device)
 
         # 使用MSE误差
         self.criterion = nn.MSELoss()
         # 使用Adam优化器 默认参数
-        self.optimizer = torch.optim.Adam(self.model.parameters())
+        self.cnn_optimizer = torch.optim.Adam(self.cnn_model.parameters())
+        self.rnn_optimizer = torch.optim.Adam(self.rnn_model.parameters())
 
-    def train(self, train_dataset, epochs=2, retrain=False):
-        if not os.path.exists('{}{}_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
+    def train_cnn(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
             retrain = True
         if not retrain:
             # 读取训练好的模型
-            self.model = torch.load('{}{}_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+            self.cnn_model = torch.load('{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
             return
         # 生成训练数据
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         # 设置为训练模式
-        self.model.train()
-        # hidden = self.model.init_hidden(self.batch_size)
+        self.cnn_model.train()
         for epoch in range(epochs):
             for data, label in tqdm(train_data):
                 # 前向传播 计算结果
-                output = self.model.forward(data)
+                output = self.cnn_model.forward(data)
                 # 使label与输出维度一致
                 label = label.view(label.size()[0], 1)
                 # 计算误差
                 loss = self.criterion(output, label)
                 # 清除梯度记录
-                self.optimizer.zero_grad()
+                self.cnn_optimizer.zero_grad()
                 # 误差反向传播
                 loss.backward()
                 # 优化器更新参数
-                self.optimizer.step()
+                self.cnn_optimizer.step()
                 # print('Train loss: ', loss.item())
         # 保存训练好的模型
-        torch.save(self.model, '{}{}_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+        torch.save(self.cnn_model, '{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
 
-    def predict(self, stock_code: str, today: tuple):
-        # 设置为预测模式
-        self.model.eval()
+    def train_rnn(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}{}_RNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.rnn_model = torch.load('{}{}_RNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+            return
+        # 生成训练数据
+        train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+        # 设置为训练模式
+        self.rnn_model.train()
+        # hidden = self.model.init_hidden(self.batch_size)
+        for epoch in range(epochs):
+            for data, label in tqdm(train_data):
+                # 前向传播 计算结果
+                output = self.rnn_model.forward(data)
+                # 使label与输出维度一致
+                label = label.view(label.size()[0], 1)
+                # 计算误差
+                loss = self.criterion(output, label)
+                # 清除梯度记录
+                self.cnn_optimizer.zero_grad()
+                # 误差反向传播
+                loss.backward()
+                # 优化器更新参数
+                self.cnn_optimizer.step()
+                print('Train loss: ', loss.item())
+        # 保存训练好的模型
+        torch.save(self.rnn_model, '{}{}_RNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+
+    def predict_data(self, stock_code: str, today: tuple):
         stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
         # 当前日期在数据集中序号
         date_index = len(stock_data) - len(self.trading_dates) + today[1]
@@ -216,9 +245,24 @@ class Prediction:
         stock_data = stock_data[date_index - self.data_days:date_index]
         stock_data = np.reshape(stock_data.values, (1, self.data_days, len(self.input_columns)))
         stock_data = torch.tensor(stock_data, dtype=torch.float32, device=device)
+        return stock_data
+
+    def predict_cnn(self, stock_code: str, today: tuple):
+        # 设置为预测模式
+        self.cnn_model.eval()
+        stock_data = self.predict_data(stock_code, today)
         with torch.no_grad():
             # 前向传播 输出结果
-            output = self.model.forward(stock_data)
+            output = self.cnn_model.forward(stock_data)
+            return output
+
+    def predict_rnn(self, stock_code: str, today: tuple):
+        # 设置为预测模式
+        self.rnn_model.eval()
+        stock_data = self.predict_data(stock_code, today)
+        with torch.no_grad():
+            # 前向传播 输出结果
+            output = self.rnn_model.forward(stock_data)
             return output
 
 
@@ -226,6 +270,8 @@ if __name__ == '__main__':
     dataset = StockDataset(index=1)
     print(len(dataset))
     prediction = Prediction(batch_size=50)
-    prediction.train(dataset)
-    out = prediction.predict(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
+    # prediction.train_cnn(dataset)
+    # out = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
+    prediction.train_rnn(dataset, retrain=True)
+    out = prediction.predict_rnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     print(out)
