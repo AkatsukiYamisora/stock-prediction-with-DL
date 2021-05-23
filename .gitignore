@@ -2,6 +2,7 @@
 /.idea/
 /__pycache__/
 *.csv
+*.pkl
 !./data/*.csv
 !./data/stocks/sh.000016.csv
 !./data/stocks/sh.000300.csv
