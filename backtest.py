@@ -5,11 +5,9 @@
 @author: Yamisora
 @file: backtest.py
 """
-import pandas as pd
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 
-from strategy import Strategy
+from strategy import *
 
 
 class Backtest:
@@ -118,18 +116,20 @@ class Backtest:
             self.position.loc[self.today[0]] = position
             return self.today[0]
 
-    def draw(self):
+    def draw(self, name='result'):
         """
         计算收益折线并绘图
         """
         # 指数收益百分比
-        basic_index_price = self.index['open'][0]
-        index_price = self.index['open'] / basic_index_price
+        basic_index_price = self.index['close'][0]
+        index_price = self.index['close'][::10] / basic_index_price
 
         # 总收益百分比
         basic_position = self.start_cash
         position = []
-        for trading_date in tqdm(self.trading_dates):
+        for i, trading_date in tqdm(enumerate(self.trading_dates)):
+            if i % 10 != 0:
+                continue
             # 读入当前交易日内所有股票日线信息
             stock_data = self.stocks_data(self.stocks_codes, trading_date)
             # 初始化当前拥有总金额为现金金额
@@ -138,28 +138,37 @@ class Backtest:
                 # 确认每只股票持股数
                 quantity = self.position.loc[trading_date, stock_code]
                 if quantity != 0:
-                    daily_position += quantity * stock_data.loc[stock_code, 'open']
+                    daily_position += quantity * stock_data.loc[stock_code, 'close']
             position.append(daily_position)
         position = pd.Series(position)
         position /= basic_position
 
-        x = range(len(self.trading_dates))
-        plt.figure(figsize=[30, 5])
-        plt.plot(x, index_price)
-        plt.plot(x, position)
-        plt.savefig('result.jpg')
+        x = range(0, len(self.trading_dates), 10)
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+        plt.rcParams['axes.unicode_minus'] = False
+        plt.figure(figsize=[30, 10])
+        plt.plot(x, index_price, label='指数收益')
+        plt.plot(x, position, label='选股模型持仓收益')
+        plt.legend()
+        plt.savefig('{}.jpg'.format(name))
         plt.show()
 
 
 if __name__ == '__main__':
     sz50, hs300, zz500 = 0, 1, 2
     bt = Backtest(index=hs300, start_cash=100000000, fee=0.0)
+    bt2 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
     strategy = Strategy(index=hs300)
     for date_key, date in tqdm(bt.trading_dates.items()):
         # 每10交易日调仓一次，每次选账面市值比最大的总数*0.3只股票
         if date_key % 10 == 0:
             chosen = strategy.choose_by_bm(bt.today, 90)
+            chosen2 = strategy.choose_by_cnn(bt.today, 90)
             to_buy = bt.sell(chosen)
+            to_buy2 = bt2.sell(chosen2)
             bt.buy(to_buy)
+            bt2.buy(to_buy2)
         bt.next_day()
-    bt.draw()
+        bt2.next_day()
+    bt.draw('BM_result')
+    bt2.draw('CNN_result')
