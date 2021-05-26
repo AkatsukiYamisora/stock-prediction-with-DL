@@ -105,10 +105,11 @@ class RNNModel(nn.Module):
             except KeyError:
                 raise ValueError("""非可选RNN类型,可选参数:['LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU']""")
             self.rnn = nn.RNN(input_size, hidden_size, n_layers, nonlinearity=non_linearity, batch_first=True)
-        self.fc1 = nn.Linear(hidden_size, 120)
-        self.fc2 = nn.Linear(120, 60)
-        self.fc3 = nn.Linear(60, 1)
-        self.norm = nn.BatchNorm1d(10)
+        # self.fc1 = nn.Linear(hidden_size, 120)
+        # self.fc2 = nn.Linear(120, 60)
+        # self.fc3 = nn.Linear(60, 1)
+        # self.norm = nn.BatchNorm1d(10)
+        self.fc = nn.Linear(hidden_size, 1)
 
         self.rnn_type = rnn_type
         self.hidden_size = hidden_size
@@ -121,11 +122,15 @@ class RNNModel(nn.Module):
         #     x, _ = self.rnn(x, (h0, c0))
         # else:
         #     x, _ = self.rnn(x, h0)
-        x = self.norm(x)
+        # x = self.norm(x)
         x, _ = self.rnn(x)
-        x = F.softplus(self.fc1(x[:, -1]))
-        x = F.softplus(self.fc2(x))
-        x = self.fc3(x)
+        # x = F.relu(self.fc1(x[:, -1, :]))
+        # x = F.relu(self.fc2(x))
+        # x = self.fc3(x)
+        print(x)
+        x = torch.sigmoid(x[:, -1, :])
+        print(x)
+        x = self.fc(x)
         return x
 
 
@@ -159,8 +164,8 @@ class Prediction:
 
         # RNN类型 输入大小 隐层大小 隐层数
         rnn_types = 'LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU'
-        rnn_type = rnn_types[0]
-        hidden_size = 30
+        rnn_type = rnn_types[3]
+        hidden_size = 10
         n_layers = 1
         # 初始化模型
         self.rnn_model = RNNModel(rnn_type, input_size, hidden_size, n_layers).to(device)
@@ -169,7 +174,7 @@ class Prediction:
         self.criterion = nn.MSELoss()
         # 使用Adam优化器 默认参数
         self.cnn_optimizer = torch.optim.Adam(self.cnn_model.parameters())
-        self.rnn_optimizer = torch.optim.Adam(self.rnn_model.parameters(), lr=0.0001)
+        self.rnn_optimizer = torch.optim.Adam(self.rnn_model.parameters())
 
     def train_cnn(self, train_dataset, epochs=2, retrain=False):
         if not os.path.exists('{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
@@ -222,15 +227,15 @@ class Prediction:
                 # 计算误差
                 loss = self.criterion(output, label)
                 # 清除梯度记录
-                self.cnn_optimizer.zero_grad()
+                self.rnn_optimizer.zero_grad()
                 # 误差反向传播
                 loss.backward()
-                # 梯度裁剪
-                for p in self.rnn_model.parameters():
-                    # print(p.grad.norm())                 # 查看参数p的梯度
-                    torch.nn.utils.clip_grad_norm_(self.rnn_model.parameters(), max_norm=20, norm_type=2)
+                # # 梯度裁剪
+                # for p in self.rnn_model.parameters():
+                #     print(p.grad.norm())                 # 查看参数p的梯度
+                #     torch.nn.utils.clip_grad_norm_(self.rnn_model.parameters(), max_norm=20, norm_type=2)
                 # 优化器更新参数
-                self.cnn_optimizer.step()
+                self.rnn_optimizer.step()
                 print('Train loss: ', loss.item())
         # 保存训练好的模型
         torch.save(self.rnn_model, '{}{}_RNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
@@ -274,6 +279,6 @@ if __name__ == '__main__':
     # prediction.train_cnn(dataset)
     # out = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     # print(out)
-    prediction.train_rnn(dataset, retrain=True)
+    prediction.train_rnn(dataset, retrain=True, epochs=1)
     out = prediction.predict_rnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     print(out)
