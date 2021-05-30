@@ -1,5 +1,12 @@
 # stock-prediction-with-DL/深度学习与股票分析预测
 
+![GitHub](https://img.shields.io/github/license/AkatsukiYamisora/stock-prediction-with-DL)
+![Python Version](https://img.shields.io/badge/python-3.8+-blue)
+![Pytorch Version](https://img.shields.io/badge/torch-1.7.0+-blue)
+![GitHub watchers](https://img.shields.io/github/watchers/AkatsukiYamisora/stock-prediction-with-DL?style=social)
+![GitHub Repo stars](https://img.shields.io/github/stars/AkatsukiYamisora/stock-prediction-with-DL?style=social)
+![GitHub followers](https://img.shields.io/github/followers/AkatsukiYamisora?style=social)
+
 先开一个坑，慢慢做
 
 ## data_downloader.py
