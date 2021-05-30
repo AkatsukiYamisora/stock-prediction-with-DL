@@ -20,11 +20,12 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class StockDataset(Dataset):
-    def __init__(self, data_days=10, index=0, remake_data=False):
+    def __init__(self, data_days=10, index=1, remake_data=False):
         super(StockDataset, self).__init__()
         # 存储路径
         self.base_data_path = './data/'
         self.data_path = './data/stocks/'
+        self.train_data_path = './data/train_data/'
         # 策略所需数据天数
         self.data_days = data_days
         # index选择指数组合
@@ -42,7 +43,7 @@ class StockDataset(Dataset):
         if remake_data:
             self.data = pd.DataFrame()
             for stock_code in tqdm(self.stocks_codes):
-                stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
+                stock_data = pd.read_csv('{}{}.csv'.format(self.train_data_path, stock_code))
                 stock_data = pd.DataFrame(stock_data, columns=self.input_columns)
                 batches = len(stock_data.index) - 2 * self.data_days
                 if batches <= 0:
@@ -135,7 +136,7 @@ class RNNModel(nn.Module):
 
 
 class Prediction:
-    def __init__(self, data_days=10, index=0, batch_size=50):
+    def __init__(self, data_days=10, index=1, batch_size=50):
         # 策略所需数据天数
         self.data_days = data_days
         # index选择指数组合
@@ -244,6 +245,7 @@ class Prediction:
         stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
         # 当前日期在数据集中序号
         date_index = len(stock_data) - len(self.trading_dates) + today[1]
+        # 数据不足时返回0
         if date_index < self.data_days:
             return 0
         # 生成预测数据
@@ -257,6 +259,8 @@ class Prediction:
         # 设置为预测模式
         self.cnn_model.eval()
         stock_data = self.predict_data(stock_code, today)
+        if type(stock_data) == int:
+            return 0
         with torch.no_grad():
             # 前向传播 输出结果
             output = self.cnn_model.forward(stock_data)
@@ -266,6 +270,8 @@ class Prediction:
         # 设置为预测模式
         self.rnn_model.eval()
         stock_data = self.predict_data(stock_code, today)
+        if type(stock_data) == int:
+            return 0
         with torch.no_grad():
             # 前向传播 输出结果
             output = self.rnn_model.forward(stock_data)
@@ -273,12 +279,13 @@ class Prediction:
 
 
 if __name__ == '__main__':
-    dataset = StockDataset(index=1)
+    dataset = StockDataset(data_days=10, index=1, remake_data=False)
     print(len(dataset))
-    prediction = Prediction(batch_size=5)
-    # prediction.train_cnn(dataset)
-    # out = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
+    prediction = Prediction(data_days=10, index=1, batch_size=50)
+    prediction.train_cnn(dataset, retrain=False, epochs=2)
+    out1 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[1], 1))
+    out2 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
+    print(out1, out2)
+    # prediction.train_rnn(dataset, retrain=True, epochs=1)
+    # out = prediction.predict_rnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     # print(out)
-    prediction.train_rnn(dataset, retrain=True, epochs=1)
-    out = prediction.predict_rnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
-    print(out)
