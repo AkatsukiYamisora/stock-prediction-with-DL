@@ -147,10 +147,10 @@ class Backtest:
 
 if __name__ == '__main__':
     sz50, hs300, zz500 = 0, 1, 2
-    bt1 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
-    bt2 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
-    bt3 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
-    bt4 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
+    bt1 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
+    bt2 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
+    bt3 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
+    bt4 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
     strategy = Strategy(index=hs300)
     for date_key, date in bt1.trading_dates.items():
         # 每10交易日调仓一次
@@ -194,12 +194,25 @@ if __name__ == '__main__':
     x = range(0, len(bt1.trading_dates), 5)
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
-    plt.figure(figsize=[10, 3], dpi=300)
-    plt.plot(x, index_price, label='指数收益')
-    plt.plot(x, bm_position, label='价值因子(BM)选股模型持仓收益')
-    plt.plot(x, cnn_position, label='CNN选股模型持仓收益')
-    plt.plot(x, mf_position, label='动量因子(MF)选股模型持仓收益')
-    plt.plot(x, tr_position, label='换手率因子(TR)选股模型持仓收益')
+    plt.figure(figsize=[10, 7], dpi=300)
+    plt.subplot(211)
+    plt.plot(x, index_price, label='沪深300指数收益率')
+    plt.plot(x, bm_position, label='价值因子(BM)选股模型持仓收益率')
+    plt.plot(x, cnn_position, label='CNN选股模型持仓收益率')
+    plt.plot(x, mf_position, label='动量因子(MF)选股模型持仓收益率')
+    plt.plot(x, tr_position, label='换手率因子(TR)选股模型持仓收益率')
+    plt.ylabel('收益率/%')
+    x = x[::len(x)//8]
+    x_name = [bt1.trading_dates[i] for i in x]
+    plt.xticks(x, x_name)
+    plt.legend()
+    plt.subplot(212)
+    plt.plot(x, bm_position-index_price, label='价值因子(BM)选股模型持仓超额收益率')
+    plt.plot(x, cnn_position-index_price, label='CNN选股模型持仓超额收益率')
+    plt.plot(x, mf_position-index_price, label='动量因子(MF)选股模型持仓超额收益率')
+    plt.plot(x, tr_position-index_price, label='换手率因子(TR)选股模型持仓超额收益率')
+    plt.ylabel('收益率/%')
+    plt.xticks(x, x_name)
     plt.legend()
     plt.savefig('result.jpg')
     plt.show()
