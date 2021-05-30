@@ -10,13 +10,16 @@ import pandas as pd
 from tqdm import tqdm
 
 # 设置数据下载时间段
-start_date = '2018-01-01'
-end_date = '2020-12-31'
+data_start_date = '2019-01-01'
+data_end_date = '2021-05-29'
+train_data_start_date = '2015-01-01'
+train_data_end_date = '2018-12-31'
 stocks = 'sz50', 'hs300', 'zz500'
 indexes = 'sh.000016', 'sh.000300', 'sh.000905'
 # 存储路径
 base_data_path = './data/'
 data_path = './data/stocks/'
+train_data_path = './data/train_data/'
 # 设置是否下载数据
 download_stocks = True
 download_indexes = True
@@ -62,24 +65,29 @@ if download_stocks:
         result = data_save(rs, name+'_stocks', base_data_path)
         print('Downloading ' + name)
         for code in tqdm(result['code']):
-            stock_data = []
             rs = bs.query_history_k_data_plus(code, columns,
-                                              start_date=start_date, end_date=end_date,
+                                              start_date=data_start_date, end_date=data_end_date,
                                               frequency="d", adjustflag="3")
             status(rs)
             data_save(rs, code)
+            rs2 = bs.query_history_k_data_plus(code, columns,
+                                               start_date=train_data_start_date, end_date=train_data_end_date,
+                                               frequency="d", adjustflag="3")
+            status(rs2)
+            data_save(rs2, code, train_data_path)
+
 
 if download_indexes:
     for index in indexes:
         rs = bs.query_history_k_data_plus(index,
                                           "date,code,open,high,low,close,preclose,volume,amount,pctChg",
-                                          start_date=start_date, end_date=end_date, frequency="d")
+                                          start_date=data_start_date, end_date=data_end_date, frequency="d")
         status(rs)
         data_save(rs, index)
 
 if download_special:
     rs = bs.query_history_k_data_plus(download_special, columns,
-                                      start_date=start_date, end_date=end_date, frequency="d")
+                                      start_date=data_start_date, end_date=data_end_date, frequency="d")
     status(rs)
     data_save(rs, download_special)
 
