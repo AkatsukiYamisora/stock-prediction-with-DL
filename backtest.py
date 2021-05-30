@@ -88,6 +88,8 @@ class Backtest:
         stocks = self.stocks_data(self.stocks_codes, trading_date)
         # 初始化卖出金额
         cash = 0
+        # 卖出股票数量
+        sell_num = 0
         # 卖出所有不继续持仓的股票并删除欲购买列表中已持仓的股票
         for stock_code in self.stocks_codes:
             position = self.position.loc[trading_date, stock_code]
@@ -96,11 +98,12 @@ class Backtest:
                     # 卖出
                     cash += position * stocks.loc[stock_code, 'open'] * (1-self.fee)
                     self.position.loc[trading_date, stock_code] = 0
+                    sell_num += 1
                 else:
                     # 去除已选股票中已持仓股票
                     stocks_codes = stocks_codes.drop(stock_code)
         self.cash.loc[trading_date, 'cash'] += cash
-        return stocks_codes
+        return stocks_codes, sell_num
 
     def next_day(self) -> str:
         """
@@ -123,9 +126,10 @@ class Backtest:
         # 总收益百分比
         basic_position = self.start_cash
         position = []
-        for i, trading_date in tqdm(enumerate(self.trading_dates)):
+        for i, trading_date in enumerate(self.trading_dates):
             if i % 5 != 0:
                 continue
+            print('当前计算交易日: '+trading_date, end='\r')
             # 读入当前交易日内所有股票日线信息
             stock_data = self.stocks_data(self.stocks_codes, trading_date)
             # 初始化当前拥有总金额为现金金额
@@ -143,32 +147,59 @@ class Backtest:
 
 if __name__ == '__main__':
     sz50, hs300, zz500 = 0, 1, 2
-    bt = Backtest(index=hs300, start_cash=100000000, fee=0.0)
+    bt1 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
     bt2 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
+    bt3 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
+    bt4 = Backtest(index=hs300, start_cash=100000000, fee=0.0)
     strategy = Strategy(index=hs300)
-    for date_key, date in tqdm(bt.trading_dates.items()):
-        # 每10交易日调仓一次，每次选账面市值比最大的总数*0.3只股票
+    for date_key, date in bt1.trading_dates.items():
+        # 每10交易日调仓一次
         if date_key % 10 == 0:
-            chosen = strategy.choose_by_bm(bt.today, 90)
-            chosen2 = strategy.choose_by_cnn(bt.today, 90)
-            to_buy = bt.sell(chosen)
-            to_buy2 = bt2.sell(chosen2)
-            bt.buy(to_buy)
+            print('当前交易日: '+date)
+            chosen1 = strategy.choose_by_bm(bt1.today, 90)
+            chosen2 = strategy.choose_by_cnn(bt2.today, 90)
+            chosen3 = strategy.choose_by_mf(bt3.today, 90)
+            chosen4 = strategy.choose_by_tr(bt4.today, 90)
+            to_buy1, sell1 = bt1.sell(chosen1)
+            to_buy2, sell2 = bt2.sell(chosen2)
+            to_buy3, sell3 = bt3.sell(chosen3)
+            to_buy4, sell4 = bt4.sell(chosen4)
+            print('价值因子(BM)选股模型卖出', sell1, '只股票')
+            print('价值因子(BM)选股模型买入', len(to_buy1), '只股票')
+            print('CNN选股模型卖出', sell2, '只股票')
+            print('CNN选股模型买入', len(to_buy2), '只股票')
+            print('动量因子(MF)选股模型卖出', sell3, '只股票')
+            print('动量因子(MF)选股模型买入', len(to_buy3), '只股票')
+            print('换手率因子(TR)选股模型卖出', sell4, '只股票')
+            print('换手率因子(TR)选股模型买入', len(to_buy4), '只股票')
+            bt1.buy(to_buy1)
             bt2.buy(to_buy2)
-        bt.next_day()
+            bt3.buy(to_buy3)
+            bt4.buy(to_buy4)
+        bt1.next_day()
         bt2.next_day()
-    bm_position = bt.calculate()
+        bt3.next_day()
+        bt4.next_day()
+    print('\n计算价值因子(BM)选股模型收益中')
+    bm_position = bt1.calculate()
+    print('\n计算CNN选股模型收益中')
     cnn_position = bt2.calculate()
+    print('\n计算动量因子(MF)选股模型收益中')
+    mf_position = bt3.calculate()
+    print('\n计算换手率因子(TR)选股模型收益中')
+    tr_position = bt4.calculate()
     # 指数收益百分比
-    basic_index_price = bt.index['close'][0]
-    index_price = bt.index['close'][::5] / basic_index_price
-    x = range(0, len(bt.trading_dates), 5)
+    basic_index_price = bt1.index['close'][0]
+    index_price = bt1.index['close'][::5] / basic_index_price
+    x = range(0, len(bt1.trading_dates), 5)
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
-    plt.figure(figsize=[10, 3])
+    plt.figure(figsize=[10, 3], dpi=300)
     plt.plot(x, index_price, label='指数收益')
-    plt.plot(x, bm_position, label='BM选股模型持仓收益')
+    plt.plot(x, bm_position, label='价值因子(BM)选股模型持仓收益')
     plt.plot(x, cnn_position, label='CNN选股模型持仓收益')
+    plt.plot(x, mf_position, label='动量因子(MF)选股模型持仓收益')
+    plt.plot(x, tr_position, label='换手率因子(TR)选股模型持仓收益')
     plt.legend()
     plt.savefig('result.jpg')
     plt.show()
