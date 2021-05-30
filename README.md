@@ -14,9 +14,13 @@ backtest.py
 
 strategy.py
 
-按Fama-French三因子模型中的账面市值比因子进行选股（暂定）
+按价值因子（选择账面市值比BM）进行选股（效果差，由于BM在大市值公司的效果不佳）
 
 用CNN预测模型进行选股
+
+用动量因子(MF)进行选股
+
+用换手率因子(TR)进行选股（思路参考自Liu et al.(2019) Size an value in China, 修改了数据选取)
 
 其余策略待更新
 
