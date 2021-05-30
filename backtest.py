@@ -202,17 +202,18 @@ if __name__ == '__main__':
     plt.plot(x, mf_position, label='动量因子(MF)选股模型持仓收益率')
     plt.plot(x, tr_position, label='换手率因子(TR)选股模型持仓收益率')
     plt.ylabel('收益率/%')
-    x = x[::len(x)//8]
-    x_name = [bt1.trading_dates[i] for i in x]
-    plt.xticks(x, x_name)
+    x_ticks = x[::len(x)//8]
+    x_labels = [bt1.trading_dates[i] for i in x]
+    plt.xticks(x_ticks, x_labels)
     plt.legend()
     plt.subplot(212)
-    plt.plot(x, bm_position-index_price, label='价值因子(BM)选股模型持仓超额收益率')
-    plt.plot(x, cnn_position-index_price, label='CNN选股模型持仓超额收益率')
-    plt.plot(x, mf_position-index_price, label='动量因子(MF)选股模型持仓超额收益率')
-    plt.plot(x, tr_position-index_price, label='换手率因子(TR)选股模型持仓超额收益率')
+    plt.plot(x, [0]*len(x), label='基准市场收益率(沪深300)')
+    plt.plot(x, bm_position.values-index_price.values, label='价值因子(BM)选股模型持仓超额收益率')
+    plt.plot(x, cnn_position.values-index_price.values, label='CNN选股模型持仓超额收益率')
+    plt.plot(x, mf_position.values-index_price.values, label='动量因子(MF)选股模型持仓超额收益率')
+    plt.plot(x, tr_position.values-index_price.values, label='换手率因子(TR)选股模型持仓超额收益率')
     plt.ylabel('收益率/%')
-    plt.xticks(x, x_name)
+    plt.xticks(x_ticks, x_labels)
     plt.legend()
     plt.savefig('result.jpg')
     plt.show()
