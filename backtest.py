@@ -6,12 +6,13 @@
 @file: backtest.py
 """
 import matplotlib.pyplot as plt
+import time
 
 from strategy import *
 
 
 class Backtest:
-    def __init__(self, index=0, start_cash=300000, fee=0.0002):
+    def __init__(self, index=1, start_cash=300000, fee=0.0003):
         """
         index: 0:上证 50  1:沪深 300  2:中证 500
         """
@@ -21,7 +22,7 @@ class Backtest:
         # 存储路径
         self.base_data_path = './data/'
         self.data_path = './data/stocks/'
-        # 万三手续费
+        # 默认万三手续费
         self.fee = fee
         # 指数组合内股票名称,代码数据
         self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name[index]))
@@ -35,26 +36,29 @@ class Backtest:
         # 初始资金
         self.start_cash = start_cash
         # 每日可用资金
-        df = pd.DataFrame(self.trading_dates)
-        df['cash'] = start_cash
-        self.cash = df.set_index('date')
+        self.cash = pd.DataFrame(self.trading_dates)
+        self.cash['cash'] = start_cash
+        self.cash = self.cash.set_index('date')
         # 每日持股
-        position = pd.DataFrame()
-        position['date'] = self.trading_dates
+        self.position = pd.DataFrame()
+        self.position['date'] = self.trading_dates
         for stock_code in self.stocks_codes:
-            position[stock_code] = 0
-        self.position = position.set_index('date')
+            self.position[stock_code] = 0
+        self.position = self.position.set_index('date')
 
     def stocks_data(self, stock_codes, trading_date: str) -> pd.DataFrame():
         """
         读取指定交易日内，一系列股票日线数据
         """
+        # 空输入情况
         if stock_codes.empty:
             return pd.DataFrame(None)
         stocks = pd.DataFrame()
         for stock_code in stock_codes:
+            # 读取每只股票数据
             data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code), index_col='date')
             if trading_date in data.index:
+                # 读入指定日期数据
                 stocks = stocks.append(data.loc[trading_date], ignore_index=True)
         stocks = stocks.set_index('code')
         return stocks
@@ -66,6 +70,7 @@ class Backtest:
         trading_date = self.today[0]
         # 读入当前交易日内所有待购买股票日线数据
         stocks = self.stocks_data(stocks_codes, trading_date)
+        # 空输入情况
         if stocks.empty:
             return False
         # 预计购买股票数
@@ -73,10 +78,14 @@ class Backtest:
         # 每只股票可用购买资金
         single = self.cash.loc[trading_date, 'cash'] // n
         for stock_code in stocks_codes:
+            # 每只股票开盘价作为买入价
             open_price = stocks.loc[stock_code, 'open']
+            # 计算除去手续费后可购买份额(整百)
             quantity = ((single / (1+self.fee)) / open_price) // 100
+            # 买入并修改当日现金余额
             self.position.loc[trading_date, stock_code] += quantity * 100
             self.cash.loc[trading_date, 'cash'] -= open_price * quantity * 100
+        del stocks
         return True
 
     def sell(self, stocks_codes):
@@ -102,7 +111,9 @@ class Backtest:
                 else:
                     # 去除已选股票中已持仓股票
                     stocks_codes = stocks_codes.drop(stock_code)
+        # 当日现金余额增加卖出金额
         self.cash.loc[trading_date, 'cash'] += cash
+        del stocks
         return stocks_codes, sell_num
 
     def next_day(self) -> str:
@@ -110,10 +121,12 @@ class Backtest:
         返回下一个交易日str
         延续前一天cash数量
         """
+        # 获取当日现金余额、持仓、日期序号
         cash = self.cash.loc[self.today[0], 'cash']
         position = self.position.loc[self.today[0]]
         today = self.today[1]
         if today < len(self.trading_dates) - 1:
+            # 更新下一日现金余额、持仓、日期元组
             self.today = (self.trading_dates[today+1], today+1)
             self.cash.loc[self.today[0], 'cash'] = cash
             self.position.loc[self.today[0]] = position
@@ -127,6 +140,7 @@ class Backtest:
         basic_position = self.start_cash
         position = []
         for i, trading_date in enumerate(self.trading_dates):
+            # 每隔5交易日计算持仓
             if i % 5 != 0:
                 continue
             print('当前计算交易日: '+trading_date, end='\r')
@@ -146,6 +160,7 @@ class Backtest:
 
 
 if __name__ == '__main__':
+    start_time = time.time()
     sz50, hs300, zz500 = 0, 1, 2
     bt1 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
     bt2 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
@@ -180,6 +195,9 @@ if __name__ == '__main__':
         bt2.next_day()
         bt3.next_day()
         bt4.next_day()
+    mid_time = time.time()
+    span = mid_time - start_time
+    print('回测模拟交易用时 {} 分 {} 秒'.format(int(span // 60), span % 60))
     print('\n计算价值因子(BM)选股模型收益中')
     bm_position = bt1.calculate()
     print('\n计算CNN选股模型收益中')
@@ -202,18 +220,24 @@ if __name__ == '__main__':
     plt.plot(x, mf_position, label='动量因子(MF)选股模型持仓收益率')
     plt.plot(x, tr_position, label='换手率因子(TR)选股模型持仓收益率')
     plt.ylabel('收益率/%')
-    x_ticks = x[::len(x)//8]
-    x_labels = [bt1.trading_dates[i] for i in x]
+    x_ticks = list(x[::len(x)//9])
+    x_ticks.append(x[-1])
+    x_labels = [bt1.trading_dates[i] for i in x_ticks]
     plt.xticks(x_ticks, x_labels)
     plt.legend()
     plt.subplot(212)
-    plt.plot(x, [0]*len(x), label='基准市场收益率(沪深300)')
+    plt.plot(x, [0]*len(x), label='基准市场收益率(沪深300)', )
     plt.plot(x, bm_position.values-index_price.values, label='价值因子(BM)选股模型持仓超额收益率')
     plt.plot(x, cnn_position.values-index_price.values, label='CNN选股模型持仓超额收益率')
     plt.plot(x, mf_position.values-index_price.values, label='动量因子(MF)选股模型持仓超额收益率')
     plt.plot(x, tr_position.values-index_price.values, label='换手率因子(TR)选股模型持仓超额收益率')
-    plt.ylabel('收益率/%')
+    plt.ylabel('超额收益率/%')
     plt.xticks(x_ticks, x_labels)
     plt.legend()
     plt.savefig('result.jpg')
+    end_time = time.time()
+    span = end_time - mid_time
+    print('计算持仓收益用时 {} 分 {} 秒'.format(int(span // 60), span % 60))
+    span = end_time - start_time
+    print('总计用时 {} 分 {:.2f} 秒'.format(int(span // 60), span % 60))
     plt.show()
