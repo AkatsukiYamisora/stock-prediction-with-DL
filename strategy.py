@@ -65,11 +65,17 @@ class Strategy:
                 aver_BM = sum_BM / valid_days
             else:
                 aver_BM = 0
-            stocks_data.loc[stock_code, 'aver_BM'] = aver_BM
+            if aver_BM > 0:
+                stocks_data.loc[stock_code, 'aver_BM'] = aver_BM
         # print(stocks_data)
         stocks_data.sort_values(by='aver_BM', ascending=False, inplace=True)
         # print(stocks_data.index)
-        return stocks_data.index[0:number]
+        if len(stocks_data.index) > number:
+            # 取0到number-1共number只股票
+            return stocks_data.index[0:number]
+        else:
+            # 取全部股票
+            return stocks_data.index[:]
 
     def choose_by_cnn(self, today: tuple, number: int):
         """
@@ -86,11 +92,19 @@ class Strategy:
         for stock_code in self.stocks_codes:
             change = self.prediction.predict_cnn(stock_code, today)
             if change != 0:
+                # 1维tensor直接取值
                 change = change.item()
-            stocks_data.loc[stock_code, 'change'] = change
+            if change > 1.0:
+                # 去除小于1的预测值
+                stocks_data.loc[stock_code, 'change'] = change
         # 排序
         stocks_data.sort_values(by='change', ascending=False, inplace=True)
-        return stocks_data.index[0:number]
+        if len(stocks_data.index) > number:
+            # 取0到number-1共number只股票
+            return stocks_data.index[0:number]
+        else:
+            # 取全部股票
+            return stocks_data.index[:]
 
     def choose_by_mf(self, today: tuple, number: int):
         """
@@ -121,11 +135,17 @@ class Strategy:
                 aver_MF = sum_MF / valid_days
             else:
                 aver_MF = 0
-            stocks_data.loc[stock_code, 'aver_MF'] = aver_MF
+            if aver_MF > 0:
+                stocks_data.loc[stock_code, 'aver_MF'] = aver_MF
         # print(stocks_data)
         stocks_data.sort_values(by='aver_MF', ascending=False, inplace=True)
         # print(stocks_data.index)
-        return stocks_data.index[0:number]
+        if len(stocks_data.index) > number:
+            # 取0到number-1共number只股票
+            return stocks_data.index[0:number]
+        else:
+            # 取全部股票
+            return stocks_data.index[:]
 
     def choose_by_tr(self, today: tuple, number: int):
         """
@@ -151,15 +171,22 @@ class Strategy:
                     sum_TR += tr
                 else:
                     valid_days -= 1
-            if valid_days != 0:
+            if valid_days > 2:
                 aver_TR = sum_TR / valid_days
-                tr = stock_data.loc[self.trading_dates[today[1] - 1], 'turn']
-                ratio = tr / aver_TR
+                tr1 = stock_data.loc[self.trading_dates[days[-1]], 'turn']
+                tr2 = stock_data.loc[self.trading_dates[days[-1] - 1], 'turn']
+                ratio = (tr1 + tr2) / (aver_TR * 2)
             else:
                 ratio = 0
+            if ratio > 0:
+                stocks_data.loc[stock_code, 'ratio'] = ratio
 
-            stocks_data.loc[stock_code, 'ratio'] = ratio
         # print(stocks_data)
         stocks_data.sort_values(by='ratio', ascending=False, inplace=True)
         # print(stocks_data.index)
-        return stocks_data.index[0:number]
+        if len(stocks_data.index) > number:
+            # 取0到number-1共number只股票
+            return stocks_data.index[0:number]
+        else:
+            # 取全部股票
+            return stocks_data.index[:]
