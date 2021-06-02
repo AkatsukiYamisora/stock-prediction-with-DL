@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
 import torch.nn.functional as F
+import torchvision.models as models
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -71,6 +72,7 @@ class StockDataset(Dataset):
 
 
 class CNNModel(nn.Module):
+    """类LeNet结构CNN模型"""
     def __init__(self, data_days=10, input_size=13):
         super(CNNModel, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, 3)  # 输入通道数为1，输出通道数为6
@@ -135,6 +137,131 @@ class RNNModel(nn.Module):
         return x
 
 
+# 用于ResNet18和34的残差块，用的是2个3x3的卷积
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3,
+                               stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.shortcut = nn.Sequential()
+        # 经过处理后的x要与x的维度相同(尺寸和深度)
+        # 如果不相同，需要添加卷积+BN来变换为同一维度
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion * planes,
+                          kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * planes)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+# 用于ResNet50,101和152的残差块，用的是1x1+3x3+1x1的卷积
+class Bottleneck(nn.Module):
+    # 前面1x1和3x3卷积的filter个数相等，最后1x1卷积是其expansion倍
+    expansion = 4
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(Bottleneck, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
+                               stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = nn.Conv2d(planes, self.expansion * planes,
+                               kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion * planes,
+                          kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion * planes)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, num_classes=1):
+        super(ResNet, self).__init__()
+        self.in_planes = 64
+
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.linear = nn.Linear(4 * 512 * block.expansion, num_classes)  # 去掉池化变成4倍
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = x.view(x.size()[0], 1, x.size()[1], x.size()[2])
+        print(x)
+        out = F.relu(self.bn1(self.conv1(x)))
+        print(out)
+        out = self.layer1(out)
+        print(out)
+        out = self.layer2(out)
+        print(out)
+        out = self.layer3(out)
+        print(out)
+        out = self.layer4(out)
+        print(out)
+        # out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
+
+
+def ResNet18():
+    return ResNet(BasicBlock, [2, 2, 2, 2])
+
+
+def ResNet34():
+    return ResNet(BasicBlock, [3, 4, 6, 3])
+
+
+def ResNet50():
+    return ResNet(Bottleneck, [3, 4, 6, 3])
+
+
+def ResNet101():
+    return ResNet(Bottleneck, [3, 4, 23, 3])
+
+
+def ResNet152():
+    return ResNet(Bottleneck, [3, 8, 36, 3])
+
+
 class Prediction:
     def __init__(self, data_days=10, index=1, batch_size=50):
         # 策略所需数据天数
@@ -171,18 +298,30 @@ class Prediction:
         # 初始化模型
         self.rnn_model = RNNModel(rnn_type, input_size, hidden_size, n_layers).to(device)
 
+        # ResNet模型
+        self.resnet18 = ResNet18().to(device)
+        self.resnet34 = ResNet34().to(device)
+        self.resnet50 = ResNet50().to(device)
+        self.resnet101 = ResNet101().to(device)
+        self.resnet152 = ResNet152().to(device)
+
         # 使用MSE误差
         self.criterion = nn.MSELoss()
         # 使用Adam优化器 默认参数
         self.cnn_optimizer = torch.optim.Adam(self.cnn_model.parameters())
         self.rnn_optimizer = torch.optim.Adam(self.rnn_model.parameters())
+        self.rn18_optimizer = torch.optim.Adam(self.resnet18.parameters())
+        self.rn34_optimizer = torch.optim.Adam(self.resnet34.parameters())
+        self.rn50_optimizer = torch.optim.Adam(self.resnet50.parameters())
+        self.rn101_optimizer = torch.optim.Adam(self.resnet101.parameters())
+        self.rn152_optimizer = torch.optim.Adam(self.resnet152.parameters())
 
     def train_cnn(self, train_dataset, epochs=2, retrain=False):
-        if not os.path.exists('{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
+        if not os.path.exists('{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name[self.idx])):
             retrain = True
         if not retrain:
             # 读取训练好的模型
-            self.cnn_model = torch.load('{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+            self.cnn_model = torch.load('{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
             return
         # 生成训练数据
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -204,14 +343,14 @@ class Prediction:
                 self.cnn_optimizer.step()
                 # print('Train loss: ', loss.item())
         # 保存训练好的模型
-        torch.save(self.cnn_model, '{}{}_CNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+        torch.save(self.cnn_model, '{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
 
     def train_rnn(self, train_dataset, epochs=2, retrain=False):
-        if not os.path.exists('{}{}_RNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx])):
+        if not os.path.exists('{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name[self.idx])):
             retrain = True
         if not retrain:
             # 读取训练好的模型
-            self.rnn_model = torch.load('{}{}_RNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+            self.rnn_model = torch.load('{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
             return
         # 生成训练数据
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -239,7 +378,38 @@ class Prediction:
                 self.rnn_optimizer.step()
                 print('Train loss: ', loss.item())
         # 保存训练好的模型
-        torch.save(self.rnn_model, '{}{}_RNN_model.pkl'.format(self.base_data_path, self.index_name[self.idx]))
+        torch.save(self.rnn_model, '{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+
+    def train_resnet18(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name[self.idx])):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.resnet18 = torch.load('{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+            return
+        # 生成训练数据
+        train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+        # 设置为训练模式
+        self.resnet18.train()
+        for epoch in range(epochs):
+            # for data, label in tqdm(train_data):
+            for data, label in train_data:
+                # 前向传播 计算结果
+                output = self.resnet18.forward(data)
+                print(output)
+                # 使label与输出维度一致
+                label = label.view(label.size()[0], 1)
+                # 计算误差
+                loss = self.criterion(output, label)
+                # 清除梯度记录
+                self.cnn_optimizer.zero_grad()
+                # 误差反向传播
+                loss.backward()
+                # 优化器更新参数
+                self.cnn_optimizer.step()
+                print('Train loss: ', loss.item())
+        # 保存训练好的模型
+        torch.save(self.resnet18, '{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
 
     def predict_data(self, stock_code: str, today: tuple):
         stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
@@ -282,10 +452,11 @@ if __name__ == '__main__':
     dataset = StockDataset(data_days=10, index=1, remake_data=False)
     print(len(dataset))
     prediction = Prediction(data_days=10, index=1, batch_size=50)
-    prediction.train_cnn(dataset, retrain=False, epochs=2)
-    out1 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[1], 1))
-    out2 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
-    print(out1, out2)
+    # prediction.train_cnn(dataset, retrain=False, epochs=2)
+    # out1 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[1], 1))
+    # out2 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
+    # print(out1, out2)
     # prediction.train_rnn(dataset, retrain=True, epochs=1)
     # out = prediction.predict_rnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     # print(out)
+    prediction.train_resnet18(dataset, epochs=1, retrain=True)

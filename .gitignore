@@ -3,6 +3,7 @@
 /__pycache__/
 *.csv
 *.pkl
+*.pt
 !./data/*.csv
 !./data/stocks/sh.000016.csv
 !./data/stocks/sh.000300.csv
