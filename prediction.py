@@ -10,7 +10,6 @@ import torch.nn as nn
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
 import torch.nn.functional as F
-import torchvision.models as models
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -21,7 +20,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class StockDataset(Dataset):
-    def __init__(self, data_days=10, index=1, remake_data=False):
+    def __init__(self, data_days=10, remake_data=False):
         super(StockDataset, self).__init__()
         # 存储路径
         self.base_data_path = './data/'
@@ -29,36 +28,48 @@ class StockDataset(Dataset):
         self.train_data_path = './data/train_data/'
         # 策略所需数据天数
         self.data_days = data_days
-        # index选择指数组合
-        self.index_name = 'sz50', 'hs300', 'zz500'
-        self.indexes = 'sh.000016', 'sh.000300', 'sh.000905'
+        # 指数组合
+        self.index_name = 'hs300'
+        self.index_code = 'sh.000300'
         # 指数组合内股票名称,代码数据
-        self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name[index]))
+        self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name))
         self.stocks_codes = self.stocks['code']
         # 输入列
         self.input_columns = ('open', 'high', 'low', 'close', 'preclose', 'volume', 'amount',
-                              'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ')
+                              'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ',
+                              'total_share', 'float_share', 'free_share', 'total_mv', 'circ_mv')
         # 数据集
-        if not os.path.exists('{}{}.pkl'.format(self.base_data_path, self.index_name[index])):
+        if not os.path.exists('{}{}.pkl'.format(self.base_data_path, self.index_name)):
             remake_data = True
         if remake_data:
-            self.data = pd.DataFrame()
+            data = []
             for stock_code in tqdm(self.stocks_codes):
+                # 读取数据
                 stock_data = pd.read_csv('{}{}.csv'.format(self.train_data_path, stock_code))
+                # 选择指定列
                 stock_data = pd.DataFrame(stock_data, columns=self.input_columns)
+                # 归一化数据
+                minimum = stock_data.min()
+                r = stock_data.max() - minimum
+
                 batches = len(stock_data.index) - 2 * self.data_days
                 if batches <= 0:
                     continue
                 # 数据集存入个股训练数据
                 for i in range(batches):
-                    # predict_high = stock_data.loc[data_days+i, 'high']
-                    # predict_low = stock_data.loc[data_days+i, 'low']
+                    # 清除无效数据
+                    if 0 in stock_data[i:i+self.data_days].values:
+                        continue
+                    predict_high = stock_data.loc[data_days+i, 'high']
+                    predict_low = stock_data.loc[data_days+i, 'low']
                     predict_change = stock_data.loc[2 * data_days + i, 'close'] / stock_data.loc[data_days + i, 'close']
-                    self.data = self.data.append({'data': stock_data[i:i+self.data_days].values,
-                                                  'label': predict_change}, ignore_index=True)
-            self.data.to_pickle('{}{}.pkl'.format(self.base_data_path, self.index_name[index]))
+                    # 归一化后存入
+                    data.append({'data': ((stock_data[i:i+self.data_days]-minimum)/r).values,
+                                 'label': [predict_change, predict_low, predict_high]})
+            self.data = pd.DataFrame(data)
+            self.data.to_pickle('{}{}.pkl'.format(self.base_data_path, self.index_name))
         else:
-            self.data = pd.read_pickle('{}{}.pkl'.format(self.base_data_path, self.index_name[index]))
+            self.data = pd.read_pickle('{}{}.pkl'.format(self.base_data_path, self.index_name))
 
     def __len__(self):
         """返回整个数据集的大小"""
@@ -73,20 +84,20 @@ class StockDataset(Dataset):
 
 class CNNModel(nn.Module):
     """类LeNet结构CNN模型"""
-    def __init__(self, data_days=10, input_size=13):
+    def __init__(self, data_days=10, input_size=18):
         super(CNNModel, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, 3)  # 输入通道数为1，输出通道数为6
         self.conv2 = nn.Conv2d(6, 16, 3)  # 输入通道数为6，输出通道数为16
         self.fc1 = nn.Linear((data_days-4) * (input_size-4) * 16, 120)
         self.fc2 = nn.Linear(120, 60)
-        self.fc3 = nn.Linear(60, 1)
+        self.fc3 = nn.Linear(60, 3)
 
     def forward(self, x):
         x = x.view(x.size()[0], 1, x.size()[1], x.size()[2])
-        # 输入x (50, 1, 10, 13) -> conv1 (50, 6, 8, 11) -> relu
+        # 输入x (50, 1, 10, 18) -> conv1 (50, 6, 8, 16) -> relu
         x = self.conv1(x)
         x = F.relu(x)
-        # 输入x (50, 6, 8, 11) -> conv2 (50, 16, 6, 9) -> relu
+        # 输入x (50, 6, 8, 16) -> conv2 (50, 16, 6, 14) -> relu
         x = self.conv2(x)
         x = F.relu(x)
         # view函数将张量x变形成一维向量形式，总特征数不变，为全连接层做准备
@@ -112,7 +123,7 @@ class RNNModel(nn.Module):
         # self.fc2 = nn.Linear(120, 60)
         # self.fc3 = nn.Linear(60, 1)
         # self.norm = nn.BatchNorm1d(10)
-        self.fc = nn.Linear(hidden_size, 1)
+        self.fc = nn.Linear(hidden_size, 3)
 
         self.rnn_type = rnn_type
         self.hidden_size = hidden_size
@@ -201,7 +212,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=1):
+    def __init__(self, block, num_blocks, num_classes=3):
         super(ResNet, self).__init__()
         self.in_planes = 64
 
@@ -263,28 +274,28 @@ def ResNet152():
 
 
 class Prediction:
-    def __init__(self, data_days=10, index=1, batch_size=50):
+    def __init__(self, data_days=10, batch_size=50):
         # 策略所需数据天数
         self.data_days = data_days
-        # index选择指数组合
-        self.index_name = 'sz50', 'hs300', 'zz500'
-        self.indexes = 'sh.000016', 'sh.000300', 'sh.000905'
-        self.idx = index
+        # 指数组合
+        self.index_name = 'hs300'
+        self.index_code = 'sh.000300'
         # 存储路径
         self.base_data_path = './data/'
         self.data_path = './data/stocks/'
         # 指数组合内股票名称,代码数据
-        self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name[index]))
+        self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name))
         self.stocks_codes = self.stocks['code']
         # 指数日线数据
-        self.index = pd.read_csv('{}{}.csv'.format(self.data_path, self.indexes[index]))
+        self.index = pd.read_csv('{}{}.csv'.format(self.data_path, self.index_code))
         # 交易日str序列
         self.trading_dates = self.index['date']
         # 一次喂入数据批次
         self.batch_size = batch_size
         # 输入列
         self.input_columns = ('open', 'high', 'low', 'close', 'preclose', 'volume', 'amount',
-                              'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ')
+                              'turn', 'pctChg', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ',
+                              'total_share', 'float_share', 'free_share', 'total_mv', 'circ_mv')
         input_size = len(self.input_columns)
 
         # 选择cnn模型
@@ -317,11 +328,11 @@ class Prediction:
         self.rn152_optimizer = torch.optim.Adam(self.resnet152.parameters())
 
     def train_cnn(self, train_dataset, epochs=2, retrain=False):
-        if not os.path.exists('{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name[self.idx])):
+        if not os.path.exists('{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name)):
             retrain = True
         if not retrain:
             # 读取训练好的模型
-            self.cnn_model = torch.load('{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+            self.cnn_model = torch.load('{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name))
             return
         # 生成训练数据
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -331,8 +342,8 @@ class Prediction:
             for data, label in tqdm(train_data):
                 # 前向传播 计算结果
                 output = self.cnn_model.forward(data)
-                # 使label与输出维度一致
-                label = label.view(label.size()[0], 1)
+                # # 使label与输出维度一致
+                # label = label.view(label.size()[0], 1)
                 # 计算误差
                 loss = self.criterion(output, label)
                 # 清除梯度记录
@@ -343,14 +354,14 @@ class Prediction:
                 self.cnn_optimizer.step()
                 # print('Train loss: ', loss.item())
         # 保存训练好的模型
-        torch.save(self.cnn_model, '{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+        torch.save(self.cnn_model, '{}{}_CNN_model.pt'.format(self.base_data_path, self.index_name))
 
     def train_rnn(self, train_dataset, epochs=2, retrain=False):
-        if not os.path.exists('{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name[self.idx])):
+        if not os.path.exists('{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name)):
             retrain = True
         if not retrain:
             # 读取训练好的模型
-            self.rnn_model = torch.load('{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+            self.rnn_model = torch.load('{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name))
             return
         # 生成训练数据
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -361,8 +372,8 @@ class Prediction:
                 # 前向传播 计算结果
                 output = self.rnn_model.forward(data)
                 # print(output)
-                # 使label与输出维度一致
-                label = label.view(label.size()[0], 1)
+                # # 使label与输出维度一致
+                # label = label.view(label.size()[0], 1)
                 # print(label)
                 # 计算误差
                 loss = self.criterion(output, label)
@@ -378,14 +389,14 @@ class Prediction:
                 self.rnn_optimizer.step()
                 print('Train loss: ', loss.item())
         # 保存训练好的模型
-        torch.save(self.rnn_model, '{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+        torch.save(self.rnn_model, '{}{}_RNN_model.pt'.format(self.base_data_path, self.index_name))
 
     def train_resnet18(self, train_dataset, epochs=2, retrain=False):
-        if not os.path.exists('{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name[self.idx])):
+        if not os.path.exists('{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name)):
             retrain = True
         if not retrain:
             # 读取训练好的模型
-            self.resnet18 = torch.load('{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+            self.resnet18 = torch.load('{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name))
             return
         # 生成训练数据
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -409,7 +420,7 @@ class Prediction:
                 self.cnn_optimizer.step()
                 print('Train loss: ', loss.item())
         # 保存训练好的模型
-        torch.save(self.resnet18, '{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name[self.idx]))
+        torch.save(self.resnet18, '{}{}_rn18_model.pt'.format(self.base_data_path, self.index_name))
 
     def predict_data(self, stock_code: str, today: tuple):
         stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
@@ -449,14 +460,14 @@ class Prediction:
 
 
 if __name__ == '__main__':
-    dataset = StockDataset(data_days=10, index=1, remake_data=False)
+    dataset = StockDataset(data_days=10, remake_data=False)
     print(len(dataset))
-    prediction = Prediction(data_days=10, index=1, batch_size=50)
-    # prediction.train_cnn(dataset, retrain=False, epochs=2)
-    # out1 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[1], 1))
-    # out2 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
+    prediction = Prediction(data_days=10, batch_size=50)
+    prediction.train_cnn(dataset, retrain=False, epochs=2)
+    out1 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[1], 1))
+    out2 = prediction.predict_cnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     # print(out1, out2)
     # prediction.train_rnn(dataset, retrain=True, epochs=1)
     # out = prediction.predict_rnn(dataset.stocks_codes[0], (prediction.trading_dates[30], 30))
     # print(out)
-    prediction.train_resnet18(dataset, epochs=1, retrain=True)
+    # prediction.train_resnet18(dataset, epochs=1, retrain=True)
