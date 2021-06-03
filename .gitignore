@@ -4,6 +4,7 @@
 *.csv
 *.pkl
 *.pt
+tushare_apikey.txt
 !./data/*.csv
 !./data/stocks/sh.000016.csv
 !./data/stocks/sh.000300.csv
