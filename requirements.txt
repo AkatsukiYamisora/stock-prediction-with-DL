@@ -4,3 +4,4 @@ baostock==0.8.8
 matplotlib==3.2.2
 tqdm==4.48.2
 numpy==1.19.3
+tushare==1.2.62
