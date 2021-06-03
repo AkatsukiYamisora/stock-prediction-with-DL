@@ -12,23 +12,25 @@ from strategy import *
 
 
 class Backtest:
-    def __init__(self, index=1, start_cash=300000, fee=0.0003):
+    def __init__(self, start_cash=300000, fee=0.0003):
         """
-        index: 0:上证 50  1:沪深 300  2:中证 500
+        回测
+        @start_cash: 初始资金
+        @fee: 手续费比例
         """
         # index选择指数组合
-        self.index_name = 'sz50', 'hs300', 'zz500'
-        self.indexes = 'sh.000016', 'sh.000300', 'sh.000905'
+        self.index_name = 'hs300'
+        self.index_code = 'sh.000300'
         # 存储路径
         self.base_data_path = './data/'
         self.data_path = './data/stocks/'
         # 默认万三手续费
         self.fee = fee
         # 指数组合内股票名称,代码数据
-        self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name[index]))
+        self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name))
         self.stocks_codes = self.stocks['code']
         # 指数日线数据
-        self.index = pd.read_csv('{}{}.csv'.format(self.data_path, self.indexes[index]))
+        self.index = pd.read_csv('{}{}.csv'.format(self.data_path, self.index_code))
         # 交易日str序列
         self.trading_dates = self.index['date']
         # 今日名称str与序列序号int
@@ -161,12 +163,11 @@ class Backtest:
 
 if __name__ == '__main__':
     start_time = time.time()
-    sz50, hs300, zz500 = 0, 1, 2
-    bt1 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
-    bt2 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
-    bt3 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
-    bt4 = Backtest(index=hs300, start_cash=10000000, fee=0.0003)
-    strategy = Strategy(index=hs300)
+    bt1 = Backtest(start_cash=10000000, fee=0.0003)
+    bt2 = Backtest(start_cash=10000000, fee=0.0003)
+    bt3 = Backtest(start_cash=10000000, fee=0.0003)
+    bt4 = Backtest(start_cash=10000000, fee=0.0003)
+    strategy = Strategy(data_days=10)
     for date_key, date in bt1.trading_dates.items():
         # 每10交易日调仓一次
         if date_key % 10 == 0:
