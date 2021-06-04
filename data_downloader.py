@@ -34,7 +34,7 @@ pro = ts.pro_api(apikey)
 download_stocks = True
 download_indexes = True
 # 下载个股参数列表
-fields = "date,open,high,low,close,preclose,volume," \
+fields = "date,code,open,high,low,close,preclose,volume," \
          "amount,turn,peTTM,psTTM,pcfNcfTTM,pbMRQ"
 ts_basic_fields = "trade_date,total_share,float_share,free_share,total_mv,circ_mv"
 
