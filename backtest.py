@@ -258,7 +258,7 @@ if __name__ == '__main__':
     x = range(0, len(bt1.trading_dates), 5)
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
-    plt.figure(figsize=[10, 7], dpi=300)
+    plt.figure(figsize=[20, 15], dpi=300)
     plt.subplot(211)
     plt.plot(x, index_price, label='沪深300指数收益率')
     plt.plot(x, bm_position, label='价值因子(BM)选股模型持仓收益率')
