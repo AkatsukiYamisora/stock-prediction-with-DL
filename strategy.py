@@ -78,35 +78,6 @@ class Strategy:
             # 取全部股票
             return stocks_data.index[:]
 
-    def choose_by_cnn(self, today: tuple, number: int):
-        """
-        选择CNN预测未来data_days天涨幅最高的number只股票
-        """
-        # 第一次买入策略应大于策略所需数据天数
-        if today[1] < self.data_days:
-            return pd.Series(None)
-        # 建立用于计算预测涨跌幅的DF
-        stocks_data = pd.DataFrame(self.stocks_codes)
-        stocks_data['change'] = 0
-        stocks_data = stocks_data.set_index('code')
-        # 预测每只股票未来data_days天涨跌幅
-        for stock_code in self.stocks_codes:
-            change = self.prediction.predict_cnn(stock_code, today)
-            if change != 0:
-                # 1维tensor直接取值
-                change = change.item()
-            if change > 1.0:
-                # 去除小于1的预测值
-                stocks_data.loc[stock_code, 'change'] = change
-        # 排序
-        stocks_data.sort_values(by='change', ascending=False, inplace=True)
-        if len(stocks_data.index) > number:
-            # 取0到number-1共number只股票
-            return stocks_data.index[0:number]
-        else:
-            # 取全部股票
-            return stocks_data.index[:]
-
     def choose_by_mf(self, today: tuple, number: int):
         """
         选择最近data_days中动量因子(Momentum Factor)最高的number只股票
@@ -191,3 +162,50 @@ class Strategy:
         else:
             # 取全部股票
             return stocks_data.index[:]
+
+    def __nn_choose(self, model_type: str, today: tuple, number: int):
+        """
+        选择指定NN预测未来data_days天涨幅最高的number只股票
+        """
+        # 第一次买入策略应大于策略所需数据天数
+        if today[1] < self.data_days:
+            return pd.Series(None)
+        # 建立用于计算预测涨跌幅的DF
+        stocks_data = pd.DataFrame(self.stocks_codes)
+        stocks_data['change'] = 0
+        stocks_data = stocks_data.set_index('code')
+        # 预测每只股票未来data_days天涨跌幅
+        for stock_code in self.stocks_codes:
+            change = getattr(self.prediction, 'predict_'+model_type)(stock_code, today)
+            if type(change) != int:
+                # 1维tensor直接取值
+                change = change[0, 0].item()
+            if change > 1.0:
+                # 去除小于1的预测值
+                stocks_data.loc[stock_code, 'change'] = change
+        # 排序
+        stocks_data.sort_values(by='change', ascending=False, inplace=True)
+        if len(stocks_data.index) > number:
+            # 取0到number-1共number只股票
+            return stocks_data.index[0:number]
+        else:
+            # 取全部股票
+            return stocks_data.index[:]
+
+    def choose_by_cnn(self, today: tuple, number: int):
+        return self.__nn_choose('cnn', today, number)
+
+    def choose_by_lstm(self, today: tuple, number: int):
+        return self.__nn_choose('lstm', today, number)
+
+    def choose_by_gru(self, today: tuple, number: int):
+        return self.__nn_choose('gru', today, number)
+
+    def choose_by_rnn_tanh(self, today: tuple, number: int):
+        return self.__nn_choose('rnn_tanh', today, number)
+
+    def choose_by_rnn_relu(self, today: tuple, number: int):
+        return self.__nn_choose('rnn_relu', today, number)
+
+    def choose_by_resnet18(self, today: tuple, number: int):
+        return self.__nn_choose('resnet18', today, number)
