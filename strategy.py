@@ -192,7 +192,7 @@ class Strategy:
                 avail_num += 1
         # 排序
         stocks_data.sort_values(by='change', ascending=False, inplace=True)
-        if len(stocks_data.index) > number:
+        if avail_num > number:
             # 取0到number-1共number只股票
             return stocks_data.index[0:number]
         else:
