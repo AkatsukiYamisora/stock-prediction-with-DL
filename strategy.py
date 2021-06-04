@@ -33,7 +33,12 @@ class Strategy:
         # 训练CNN模型
         self.dataset = StockDataset(data_days=data_days)
         self.prediction = Prediction(data_days=data_days, batch_size=50)
-        self.prediction.train_cnn(self.dataset)
+        self.prediction.train_cnn(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_lstm(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_gru(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_rnn_tanh(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_rnn_relu(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_resnet18(self.dataset, retrain=False, epochs=2)
 
     def choose_by_bm(self, today: tuple, number: int):
         """
