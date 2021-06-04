@@ -179,6 +179,7 @@ class Strategy:
         stocks_data = pd.DataFrame(self.stocks_codes)
         stocks_data['change'] = 0
         stocks_data = stocks_data.set_index('code')
+        avail_num = 0
         # 预测每只股票未来data_days天涨跌幅
         for stock_code in self.stocks_codes:
             change = getattr(self.prediction, 'predict_'+model_type)(stock_code, today)
@@ -188,14 +189,15 @@ class Strategy:
             if change > 1.0:
                 # 去除小于1的预测值
                 stocks_data.loc[stock_code, 'change'] = change
+                avail_num += 1
         # 排序
         stocks_data.sort_values(by='change', ascending=False, inplace=True)
         if len(stocks_data.index) > number:
             # 取0到number-1共number只股票
             return stocks_data.index[0:number]
         else:
-            # 取全部股票
-            return stocks_data.index[:]
+            # 取全部有效股票
+            return stocks_data.index[:avail_num]
 
     def choose_by_cnn(self, today: tuple, number: int):
         return self.__nn_choose('cnn', today, number)
