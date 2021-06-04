@@ -9,7 +9,9 @@ import os
 import baostock as bs
 import tushare as ts
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
+import time
 
 # 设置数据下载时间段
 data_start_date = '2019-01-01'
@@ -32,8 +34,8 @@ pro = ts.pro_api(apikey)
 download_stocks = True
 download_indexes = True
 # 下载个股参数列表
-fields = "date,code,open,high,low,close,preclose,volume," \
-          "amount,turn,pctChg,peTTM,psTTM,pcfNcfTTM,pbMRQ"
+fields = "date,open,high,low,close,preclose,volume," \
+         "amount,turn,peTTM,psTTM,pcfNcfTTM,pbMRQ"
 ts_basic_fields = "trade_date,total_share,float_share,free_share,total_mv,circ_mv"
 
 # baostock数据下载
@@ -91,16 +93,26 @@ if download_stocks:
                                               start_date=start_date, end_date=end_date,
                                               frequency="d", adjustflag="3")
             status(rs)
+
+            # baostock日线数据
             df1 = data_load(rs)
             df1.set_index('date', inplace=True)
+
+            # tushare指标数据
             df2 = pro.daily_basic(ts_code=ts_c(code), start_date=ts_d(start_date),
                                   end_date=ts_d(end_date), fields=ts_basic_fields)
             df2['trade_date'] = bs_d(df2['trade_date'])
             df2.set_index('trade_date', inplace=True)
+
+            # 按index横向拼接
             df1 = df1.join(df2)
+            # 去除无效空值,补0
+            df1.replace(to_replace=r'^\s*$', value=np.nan, regex=True, inplace=True)
             df1.fillna(0, inplace=True)
+
             df1.to_csv(path+code+'.csv')
             del df1, df2
+        time.sleep(0.2)  # 防止tushare调用到分钟上限
 
 
 if download_indexes:
