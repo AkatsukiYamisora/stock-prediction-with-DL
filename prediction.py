@@ -447,28 +447,28 @@ if __name__ == '__main__':
     prediction = Prediction(data_days=10, batch_size=50)
 
     code = dataset.stocks_codes[0]
-    day = (prediction.trading_dates[30], 30)
+    trading_day = (prediction.trading_dates[30], 30)
 
     prediction.train_cnn(dataset, retrain=False, epochs=2)
-    out1 = prediction.predict_cnn(code, day)
+    out1 = prediction.predict_cnn(code, trading_day)
     print(out1)
 
     prediction.train_lstm(dataset, retrain=False, epochs=2)
-    out2 = prediction.predict_lstm(code, day)
+    out2 = prediction.predict_lstm(code, trading_day)
     print(out2)
 
     prediction.train_gru(dataset, retrain=False, epochs=2)
-    out3 = prediction.predict_gru(code, day)
+    out3 = prediction.predict_gru(code, trading_day)
     print(out3)
 
     prediction.train_rnn_tanh(dataset, retrain=False, epochs=2)
-    out4 = prediction.predict_rnn_tanh(code, day)
+    out4 = prediction.predict_rnn_tanh(code, trading_day)
     print(out4)
 
     prediction.train_rnn_relu(dataset, retrain=False, epochs=2)
-    out5 = prediction.predict_rnn_relu(code, day)
+    out5 = prediction.predict_rnn_relu(code, trading_day)
     print(out5)
 
     prediction.train_resnet18(dataset, retrain=False, epochs=2)
-    out6 = prediction.predict_resnet18(code, day)
+    out6 = prediction.predict_resnet18(code, trading_day)
     print(out6)
