@@ -26,19 +26,33 @@
 
 用换手率因子(TR)进行选股（思路参考自Liu et al.(2019) Size and value in China, 修改了数据选取)
 
+用LSTM预测模型进行选股
+
+用GRU预测模型进行选股
+
+用两种激活函数的RNN预测模型进行选股
+
+用ResNet18预测模型进行选股
+
 其余策略待更新
 
 ## prediction.py
 
 使用CNN对股票数据进行预测
 
-使用多种RNN对股票数据进行预测（待更新）
+使用LSTM，GRU，两种激活函数的RNN对股票数据进行预测
 
-## /data/sz50_stocks.csv & hs300_stocks.csv & zz500_stocks.csv
+使用ResNet18对股票数据进行预测
+
+## tushare_apikey.txt
+
+本地保存tushare pro的apikey
+
+## /data/hs300_stocks.csv
 
 存放指数股票列表数据
 
-## /data/stocks/sh.000016.csv & sh.000300.csv & sh.000905.csv
+## /data/stocks/sh.000300.csv
 
 存放指数日线数据
 
