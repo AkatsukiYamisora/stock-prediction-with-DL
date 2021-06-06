@@ -5,7 +5,7 @@
 @author: Yamisora
 @file: backtest.py
 """
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import time
 
 from strategy import *
@@ -169,8 +169,8 @@ if __name__ == '__main__':
     bt4 = Backtest(start_cash=10000000, fee=0.0003)
     bt5 = Backtest(start_cash=10000000, fee=0.0003)
     bt6 = Backtest(start_cash=10000000, fee=0.0003)
-    bt7 = Backtest(start_cash=10000000, fee=0.0003)
-    bt8 = Backtest(start_cash=10000000, fee=0.0003)
+    # bt7 = Backtest(start_cash=10000000, fee=0.0003)
+    # bt8 = Backtest(start_cash=10000000, fee=0.0003)
     bt9 = Backtest(start_cash=10000000, fee=0.0003)
     strategy = Strategy(data_days=10)
     for date_key, date in bt1.trading_dates.items():
@@ -183,8 +183,8 @@ if __name__ == '__main__':
             chosen4 = strategy.choose_by_tr(bt4.today, 90)
             chosen5 = strategy.choose_by_lstm(bt5.today, 90)
             chosen6 = strategy.choose_by_gru(bt6.today, 90)
-            chosen7 = strategy.choose_by_rnn_tanh(bt7.today, 90)
-            chosen8 = strategy.choose_by_rnn_relu(bt8.today, 90)
+            # chosen7 = strategy.choose_by_rnn_tanh(bt7.today, 90)
+            # chosen8 = strategy.choose_by_rnn_relu(bt8.today, 90)
             chosen9 = strategy.choose_by_resnet18(bt9.today, 90)
             to_buy1, sell1 = bt1.sell(chosen1)
             print('价值因子(BM)选股模型卖出', sell1, '只股票')
@@ -198,10 +198,10 @@ if __name__ == '__main__':
             print('LSTM选股模型卖出', sell5, '只股票')
             to_buy6, sell6 = bt6.sell(chosen6)
             print('GRU选股模型卖出', sell6, '只股票')
-            to_buy7, sell7 = bt7.sell(chosen7)
-            print('RNN_tanh选股模型卖出', sell7, '只股票')
-            to_buy8, sell8 = bt8.sell(chosen8)
-            print('RNN_relu选股模型卖出', sell8, '只股票')
+            # to_buy7, sell7 = bt7.sell(chosen7)
+            # print('RNN_tanh选股模型卖出', sell7, '只股票')
+            # to_buy8, sell8 = bt8.sell(chosen8)
+            # print('RNN_relu选股模型卖出', sell8, '只股票')
             to_buy9, sell9 = bt9.sell(chosen9)
             print('ResNet18选股模型卖出', sell9, '只股票')
             bt1.buy(to_buy1)
@@ -216,10 +216,10 @@ if __name__ == '__main__':
             print('LSTM选股模型买入', len(to_buy5), '只股票')
             bt6.buy(to_buy6)
             print('GRU选股模型买入', len(to_buy6), '只股票')
-            bt7.buy(to_buy7)
-            print('RNN_tanh选股模型买入', len(to_buy7), '只股票')
-            bt8.buy(to_buy8)
-            print('RNN_relu选股模型买入', len(to_buy8), '只股票')
+            # bt7.buy(to_buy7)
+            # print('RNN_tanh选股模型买入', len(to_buy7), '只股票')
+            # bt8.buy(to_buy8)
+            # print('RNN_relu选股模型买入', len(to_buy8), '只股票')
             bt9.buy(to_buy9)
             print('ResNet18选股模型买入', len(to_buy9), '只股票')
         bt1.next_day()
@@ -228,8 +228,8 @@ if __name__ == '__main__':
         bt4.next_day()
         bt5.next_day()
         bt6.next_day()
-        bt7.next_day()
-        bt8.next_day()
+        # bt7.next_day()
+        # bt8.next_day()
         bt9.next_day()
     mid_time = time.time()
     span = mid_time - start_time
@@ -246,10 +246,10 @@ if __name__ == '__main__':
     lstm_position = bt5.calculate()
     print('\n计算GRU选股模型收益中')
     gru_position = bt6.calculate()
-    print('\n计算RNN_tanh选股模型收益中')
-    rnn_tanh_position = bt7.calculate()
-    print('\n计算RNN_relu选股模型收益中')
-    rnn_relu_position = bt8.calculate()
+    # print('\n计算RNN_tanh选股模型收益中')
+    # rnn_tanh_position = bt7.calculate()
+    # print('\n计算RNN_relu选股模型收益中')
+    # rnn_relu_position = bt8.calculate()
     print('\n计算ResNet18选股模型收益中')
     resnet18_position = bt9.calculate()
     # 指数收益百分比
@@ -267,8 +267,8 @@ if __name__ == '__main__':
     plt.plot(x, tr_position, label='换手率因子(TR)选股模型持仓收益率')
     plt.plot(x, lstm_position, label='LSTM选股模型持仓收益率')
     plt.plot(x, gru_position, label='GRU选股模型持仓收益率')
-    plt.plot(x, rnn_tanh_position, label='RNN_tanh选股模型持仓收益率')
-    plt.plot(x, rnn_relu_position, label='RNN_relu选股模型持仓收益率')
+    # plt.plot(x, rnn_tanh_position, label='RNN_tanh选股模型持仓收益率')
+    # plt.plot(x, rnn_relu_position, label='RNN_relu选股模型持仓收益率')
     plt.plot(x, resnet18_position, label='ResNet18选股模型持仓收益率')
     plt.ylabel('收益率/%')
     x_ticks = list(x[::len(x)//9])
@@ -284,8 +284,8 @@ if __name__ == '__main__':
     plt.plot(x, tr_position.values-index_price.values, label='换手率因子(TR)选股模型持仓超额收益率')
     plt.plot(x, lstm_position.values-index_price.values, label='LSTM选股模型持仓超额收益率')
     plt.plot(x, gru_position.values-index_price.values, label='GRU选股模型持仓超额收益率')
-    plt.plot(x, rnn_tanh_position.values-index_price.values, label='RNN_tanh选股模型持仓超额收益率')
-    plt.plot(x, rnn_relu_position.values-index_price.values, label='RNN_relu选股模型持仓超额收益率')
+    # plt.plot(x, rnn_tanh_position.values-index_price.values, label='RNN_tanh选股模型持仓超额收益率')
+    # plt.plot(x, rnn_relu_position.values-index_price.values, label='RNN_relu选股模型持仓超额收益率')
     plt.plot(x, resnet18_position.values-index_price.values, label='ResNet18选股模型持仓超额收益率')
     plt.ylabel('超额收益率/%')
     plt.xticks(x_ticks, x_labels)
@@ -296,4 +296,3 @@ if __name__ == '__main__':
     print('计算持仓收益用时 {} 分 {} 秒'.format(int(span // 60), span % 60))
     span = end_time - start_time
     print('总计用时 {} 分 {:.2f} 秒'.format(int(span // 60), span % 60))
-    plt.show()
