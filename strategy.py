@@ -36,8 +36,8 @@ class Strategy:
         self.prediction.train_cnn(self.dataset, retrain=False, epochs=2)
         self.prediction.train_lstm(self.dataset, retrain=False, epochs=2)
         self.prediction.train_gru(self.dataset, retrain=False, epochs=2)
-        self.prediction.train_rnn_tanh(self.dataset, retrain=False, epochs=2)
-        self.prediction.train_rnn_relu(self.dataset, retrain=False, epochs=2)
+        # self.prediction.train_rnn_tanh(self.dataset, retrain=False, epochs=2)
+        # self.prediction.train_rnn_relu(self.dataset, retrain=False, epochs=2)
         self.prediction.train_resnet18(self.dataset, retrain=False, epochs=2)
 
     def choose_by_bm(self, today: tuple, number: int):
@@ -184,10 +184,10 @@ class Strategy:
         for stock_code in self.stocks_codes:
             change = getattr(self.prediction, 'predict_'+model_type)(stock_code, today)
             if type(change) != int:
-                # 1维tensor直接取值
-                change = change[0, 0].item()
-            if change > 1.0:
-                # 去除小于1的预测值
+                # tensor直接取值
+                change = change.item()
+            if change > 0:
+                # 去除小于0的预测值
                 stocks_data.loc[stock_code, 'change'] = change
                 avail_num += 1
         # 排序
