@@ -14,9 +14,35 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import os
+import matplotlib.pyplot as plt
 
 # 运行设备
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+def return_rate_transform(return_rate):
+    if return_rate < -0.5:
+        return -1.0
+    elif return_rate < -0.3:
+        return -0.8
+    elif return_rate < -0.1:
+        return -0.6
+    elif return_rate < -0.05:
+        return -0.4
+    elif return_rate < -0.01:
+        return -0.2
+    elif return_rate < 0.01:
+        return 0
+    elif return_rate < 0.05:
+        return 0.2
+    elif return_rate < 0.1:
+        return 0.4
+    elif return_rate < 0.3:
+        return 0.6
+    elif return_rate < 0.5:
+        return 0.8
+    elif return_rate >= 0.5:
+        return 1.0
 
 
 class StockDataset(Dataset):
@@ -35,9 +61,8 @@ class StockDataset(Dataset):
         self.stocks = pd.read_csv('{}{}_stocks.csv'.format(self.base_data_path, self.index_name))
         self.stocks_codes = self.stocks['code']
         # 输入列
-        self.input_columns = ('open', 'high', 'low', 'close', 'preclose', 'volume', 'amount',
-                              'turn', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ', 'total_share',
-                              'float_share', 'free_share', 'total_mv', 'circ_mv')
+        self.input_columns = ('open', 'high', 'low', 'close', 'preclose',
+                              'turn', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ',)
         # 数据集
         if not os.path.exists('{}{}.pkl'.format(self.base_data_path, self.index_name)):
             remake_data = True
@@ -55,14 +80,21 @@ class StockDataset(Dataset):
                 # 数据集存入个股训练数据
                 for i in range(batches):
                     # 清除无效数据(0)
-                    if 0 in stock_data[i:i+self.data_days].values:
+                    if 0 in stock_data[i:i + self.data_days].values:
                         continue
-                    high_change = stock_data.loc[data_days+i, 'high'] / stock_data.loc[data_days+i-1, 'high']
-                    low_change = stock_data.loc[data_days+i, 'low'] / stock_data.loc[data_days+i-1, 'low']
-                    predict_change = stock_data.loc[2 * data_days + i, 'close'] / stock_data.loc[data_days + i, 'close']
-                    # 归一化后存入
-                    data.append({'data': (stock_data[i:i+self.data_days] / stock_data.loc[i]).values,
-                                 'label': [predict_change, low_change, high_change]})
+                    # 当前日期为data_days + i
+                    # data_days后收盘价
+                    next_price = stock_data.loc[2 * data_days + i, 'close']
+                    # 当前日期收盘价
+                    this_price = stock_data.loc[data_days + i, 'close']
+                    # high_change = stock_data.loc[data_days + i, 'high'] / stock_data.loc[data_days + i - 1, 'high']-1
+                    # low_change = stock_data.loc[data_days + i, 'low'] / stock_data.loc[data_days + i - 1, 'low'] - 1
+                    close_change = this_price / stock_data.loc[data_days + i - 1, 'close'] - 1
+                    predict_change = return_rate_transform(next_price / this_price - 1)
+                    # 当前日期前一天到前data_days天 共data_days天数据
+                    data.append({'data': stock_data[i:i + self.data_days].values,
+                                 'label': [predict_change, close_change]})
+                    #            'label': [predict_change, low_change, high_change, close_change]})
             self.data = pd.DataFrame(data)
             self.data.to_pickle('{}{}.pkl'.format(self.base_data_path, self.index_name))
         else:
@@ -85,16 +117,16 @@ class CNNModel(nn.Module):
         super(CNNModel, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, 3)  # 输入通道数为1，输出通道数为6
         self.conv2 = nn.Conv2d(6, 16, 3)  # 输入通道数为6，输出通道数为16
-        self.fc1 = nn.Linear((data_days-4) * (input_size-4) * 16, 120)
-        self.fc2 = nn.Linear(120, 60)
-        self.fc3 = nn.Linear(60, 3)
+        self.fc1 = nn.Linear((data_days - 4) * (input_size - 4) * 16, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 2)
 
     def forward(self, x):
         x = x.view(x.size()[0], 1, x.size()[1], x.size()[2])
-        # 输入x (50, 1, 10, 17) -> conv1 (50, 6, 8, 15) -> relu
+        # 输入x (50, 1, 10, 10) -> conv1 (50, 6, 8, 8) -> relu
         x = self.conv1(x)
         x = F.relu(x)
-        # 输入x (50, 6, 8, 15) -> conv2 (50, 16, 6, 13) -> relu
+        # 输入x (50, 6, 8, 8) -> conv2 (50, 16, 6, 6) -> relu
         x = self.conv2(x)
         x = F.relu(x)
         # view函数将张量x变形成一维向量形式，总特征数不变，为全连接层做准备
@@ -117,8 +149,8 @@ class RNNModel(nn.Module):
                 raise ValueError("""非可选RNN类型,可选参数:['LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU']""")
             self.rnn = nn.RNN(input_size, hidden_size, n_layers, nonlinearity=non_linearity, batch_first=True)
         self.fc1 = nn.Linear(hidden_size, 120)
-        self.fc2 = nn.Linear(120, 60)
-        self.fc3 = nn.Linear(60, 3)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 2)
         # self.norm = nn.BatchNorm1d(10)
         # self.fc = nn.Linear(hidden_size, 3)
 
@@ -133,7 +165,7 @@ class RNNModel(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         # print(x)
-        # x = torch.sigmoid(x[:, -1, :])
+        # x = F.relu(x[:, -1, :])
         # print(x)
         # x = self.fc(x)
         return x
@@ -203,7 +235,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=3):
+    def __init__(self, block, num_blocks, num_classes=2):
         super(ResNet, self).__init__()
         self.in_planes = 64
 
@@ -215,7 +247,7 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.linear = nn.Linear(6 * 512 * block.expansion, num_classes)
+        self.linear = nn.Linear(4 * 512 * block.expansion, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1] * (num_blocks - 1)
@@ -234,6 +266,7 @@ class ResNet(nn.Module):
         out = self.layer4(out)
         # out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
+        # print(out.size())
         out = self.linear(out)
         return out
 
@@ -278,9 +311,8 @@ class Prediction:
         # 一次喂入数据批次
         self.batch_size = batch_size
         # 输入列
-        self.input_columns = ('open', 'high', 'low', 'close', 'preclose', 'volume', 'amount',
-                              'turn', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ', 'total_share',
-                              'float_share', 'free_share', 'total_mv', 'circ_mv')
+        self.input_columns = ('open', 'high', 'low', 'close', 'preclose',
+                              'turn', 'peTTM', 'psTTM', 'pcfNcfTTM', 'pbMRQ',)
         input_size = len(self.input_columns)
 
         # cnn模型
@@ -288,7 +320,7 @@ class Prediction:
 
         # RNN类型 输入大小 隐层大小 隐层数
         # rnn_types = 'LSTM', 'GRU', 'RNN_TANH', 'RNN_RELU'
-        hidden_size = 50
+        hidden_size = 20
         n_layers = 2
         # 初始化模型
         self.lstm = RNNModel('LSTM', input_size, hidden_size, n_layers).to(device)
@@ -305,28 +337,28 @@ class Prediction:
 
         # 使用MSE误差
         self.criterion = nn.MSELoss()
-        # 使用Adam优化器 默认参数
-        self.cnn_optimizer = torch.optim.Adam(self.cnn.parameters())
-        self.lstm_optimizer = torch.optim.Adam(self.lstm.parameters())
-        self.gru_optimizer = torch.optim.Adam(self.gru.parameters())
-        self.rnn_tanh_optimizer = torch.optim.Adam(self.rnn_tanh.parameters())
-        self.rnn_relu_optimizer = torch.optim.Adam(self.rnn_relu.parameters())
-        self.rn18_optimizer = torch.optim.Adam(self.resnet18.parameters())
-        self.rn34_optimizer = torch.optim.Adam(self.resnet34.parameters())
-        self.rn50_optimizer = torch.optim.Adam(self.resnet50.parameters())
-        self.rn101_optimizer = torch.optim.Adam(self.resnet101.parameters())
-        self.rn152_optimizer = torch.optim.Adam(self.resnet152.parameters())
+        # 使用AdamW优化器 默认参数
+        self.cnn_optimizer = torch.optim.AdamW(self.cnn.parameters())
+        self.lstm_optimizer = torch.optim.AdamW(self.lstm.parameters())
+        self.gru_optimizer = torch.optim.AdamW(self.gru.parameters())
+        self.rnn_tanh_optimizer = torch.optim.AdamW(self.rnn_tanh.parameters())
+        self.rnn_relu_optimizer = torch.optim.AdamW(self.rnn_relu.parameters())
+        self.rn18_optimizer = torch.optim.AdamW(self.resnet18.parameters())
+        self.rn34_optimizer = torch.optim.AdamW(self.resnet34.parameters())
+        self.rn50_optimizer = torch.optim.AdamW(self.resnet50.parameters())
+        self.rn101_optimizer = torch.optim.AdamW(self.resnet101.parameters())
+        self.rn152_optimizer = torch.optim.AdamW(self.resnet152.parameters())
 
     def __train(self, model_name, model, optim, train_dataset, epochs=2):
         # 生成训练数据
         train_data = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         # 设置为训练模式
         model.train()
+        print('*' * 20, '\n', model_name, '模型训练中')
         for epoch in range(epochs):
-            for data, label in tqdm(train_data):
+            for data, label in train_data:
                 # 前向传播 计算结果
                 output = model.forward(data)
-                # 当label为一维时需要使label与输出维度一致
                 # label = label.view(label.size()[0], 1)
                 # 计算误差
                 loss = self.criterion(output, label)
@@ -336,8 +368,12 @@ class Prediction:
                 loss.backward()
                 # 优化器更新参数
                 optim.step()
+                print('Train_loss:', loss.item(), end='\r')
+                if loss.item() < 1e-3:
+                    break
         # 保存训练好的模型
         torch.save(model, '{}{}.pt'.format(self.base_data_path, model_name))
+        print('\n', model_name, '模型训练完成')
 
     def train_cnn(self, train_dataset, epochs=2, retrain=False):
         if not os.path.exists('{}CNN.pt'.format(self.base_data_path)):
@@ -393,10 +429,10 @@ class Prediction:
             return
         self.__train('resnet18', self.resnet18, self.rn18_optimizer, train_dataset, epochs)
 
-    def __predict_data(self, stock_code: str, today: tuple):
+    def __predict_data(self, stock_code: str, today: tuple, abs_date=False):
         stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
         # 当前日期在数据集中序号
-        date_index = len(stock_data) - len(self.trading_dates) + today[1]
+        date_index = today[1] if abs_date else len(stock_data) - len(self.trading_dates) + today[1]
         # 数据不足时返回0
         if date_index < self.data_days:
             return 0
@@ -404,8 +440,7 @@ class Prediction:
         stock_data = pd.DataFrame(stock_data, columns=self.input_columns)
         # 将0替换为上一行数据
         stock_data = stock_data.replace(0, None)
-        # 转化为与第一行的比值
-        stock_data = stock_data[date_index - self.data_days:date_index] / stock_data.loc[date_index - self.data_days]
+        stock_data = stock_data[date_index - self.data_days:date_index]
         stock_data = np.reshape(stock_data.values, (1, self.data_days, len(self.input_columns)))
         stock_data = torch.tensor(stock_data, dtype=torch.float32, device=device)
         return stock_data
@@ -419,7 +454,7 @@ class Prediction:
         with torch.no_grad():
             # 前向传播 输出结果
             output = model.forward(stock_data)
-            return output
+            return output[0, 0]
 
     def predict_cnn(self, stock_code: str, today: tuple):
         return self.__predict(self.cnn, stock_code, today)
@@ -444,31 +479,57 @@ if __name__ == '__main__':
     dataset = StockDataset(data_days=10, remake_data=False)
     print(len(dataset))
 
-    prediction = Prediction(data_days=10, batch_size=50)
+    prediction = Prediction(data_days=10, batch_size=200)
 
-    code = dataset.stocks_codes[0]
-    trading_day = (prediction.trading_dates[30], 30)
+    # p2 = t_data.loc[trading_day1[1], 'high'] / t_data.loc[trading_day1[1] - 1, 'high'] - 1
+    # p3 = t_data.loc[trading_day1[1], 'low'] / t_data.loc[trading_day1[1] - 1, 'low'] - 1
+    # p4 = t_data.loc[trading_day1[1], 'close'] / t_data.loc[trading_day1[1] - 1, 'close'] - 1
+    # print(return_rate_transform(p1), p2, p3, p4)
 
-    prediction.train_cnn(dataset, retrain=False, epochs=2)
-    out1 = prediction.predict_cnn(code, trading_day)
-    print(out1)
+    prediction.train_cnn(dataset, retrain=False, epochs=1)
 
-    prediction.train_lstm(dataset, retrain=False, epochs=2)
-    out2 = prediction.predict_lstm(code, trading_day)
-    print(out2)
+    prediction.train_lstm(dataset, retrain=False, epochs=1)
 
-    prediction.train_gru(dataset, retrain=False, epochs=2)
-    out3 = prediction.predict_gru(code, trading_day)
-    print(out3)
+    prediction.train_gru(dataset, retrain=False, epochs=1)
 
-    prediction.train_rnn_tanh(dataset, retrain=False, epochs=2)
-    out4 = prediction.predict_rnn_tanh(code, trading_day)
-    print(out4)
+    # prediction.train_rnn_tanh(dataset, retrain=False, epochs=1)
+    # out4 = prediction.predict_rnn_tanh(code, trading_day1)
+    # print('预测结果', out4)
+    #
+    # prediction.train_rnn_relu(dataset, retrain=False, epochs=1)
+    # out5 = prediction.predict_rnn_relu(code, trading_day1)
+    # print('预测结果', out5)
 
-    prediction.train_rnn_relu(dataset, retrain=False, epochs=2)
-    out5 = prediction.predict_rnn_relu(code, trading_day)
-    print(out5)
+    prediction.train_resnet18(dataset, retrain=False, epochs=1)
 
-    prediction.train_resnet18(dataset, retrain=False, epochs=2)
-    out6 = prediction.predict_resnet18(code, trading_day)
-    print(out6)
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+    plt.figure(figsize=[20, 14], dpi=200)
+    for k, code in enumerate(dataset.stocks_codes[5:9]):
+        plt.subplot(2, 2, k+1)
+        print(f'正在绘制第{k+1}张图片')
+        df = pd.read_csv('./data/stocks/' + code + '.csv')
+        trading_dates = df['date']
+        x_r = range(0, len(trading_dates))
+        x_ticks = list(x_r[::100])
+        x_ticks.append(x_r[-1])
+        x_labels = [trading_dates[i] for i in x_ticks]
+        true_close = df['close'].values
+        print('计算CNN')
+        cnn_close = [true_close[j]*(1+prediction.predict_cnn(code, (0, j))) for j in range(len(trading_dates))]
+        print('计算LSTM')
+        lstm_close = [true_close[j]*(1+prediction.predict_lstm(code, (0, j))) for j in range(len(trading_dates))]
+        # print('计算GRU')
+        # gru_close = [true_close[j]*(1+prediction.predict_gru(code, (0, j))) for j in range(len(trading_dates))]
+        print('计算ResNet18')
+        rn18_close = [true_close[j]*(1+prediction.predict_resnet18(code, (0, j)))
+                      for j in range(len(trading_dates))]
+        plt.plot(x_r, true_close, label='真实值')
+        plt.plot(x_r, cnn_close, label='CNN模型预测值')
+        plt.plot(x_r, lstm_close, label='LSTM模型预测值')
+        # plt.plot(x_r, gru_close, label='GRU模型预测值')
+        plt.plot(x_r, rn18_close, label='ResNet18模型预测值')
+        plt.ylabel('收盘价')
+        plt.xticks(x_ticks, x_labels)
+        plt.legend()
+    plt.savefig('predict.jpg')
