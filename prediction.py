@@ -21,27 +21,25 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def return_rate_transform(return_rate):
-    if return_rate < -0.5:
+    if return_rate < -0.093:
         return -1.0
-    elif return_rate < -0.3:
+    elif return_rate < -0.053:
         return -0.8
-    elif return_rate < -0.1:
+    elif return_rate < -0.030:
         return -0.6
-    elif return_rate < -0.05:
+    elif return_rate < -0.014:
         return -0.4
-    elif return_rate < -0.01:
+    elif return_rate < 0.000:
         return -0.2
-    elif return_rate < 0.01:
-        return 0
-    elif return_rate < 0.05:
+    elif return_rate < 0.016:
         return 0.2
-    elif return_rate < 0.1:
+    elif return_rate < 0.034:
         return 0.4
-    elif return_rate < 0.3:
+    elif return_rate < 0.058:
         return 0.6
-    elif return_rate < 0.5:
+    elif return_rate < 0.100:
         return 0.8
-    elif return_rate >= 0.5:
+    elif return_rate >= 0.100:
         return 1.0
 
 
@@ -90,7 +88,7 @@ class StockDataset(Dataset):
                     # high_change = stock_data.loc[data_days + i, 'high'] / stock_data.loc[data_days + i - 1, 'high']-1
                     # low_change = stock_data.loc[data_days + i, 'low'] / stock_data.loc[data_days + i - 1, 'low'] - 1
                     close_change = this_price / stock_data.loc[data_days + i - 1, 'close'] - 1
-                    predict_change = return_rate_transform(next_price / this_price - 1)
+                    predict_change = (next_price / this_price - 1)
                     # 当前日期前一天到前data_days天 共data_days天数据
                     data.append({'data': stock_data[i:i + self.data_days].values,
                                  'label': [predict_change, close_change]})
@@ -492,44 +490,52 @@ if __name__ == '__main__':
 
     prediction.train_gru(dataset, retrain=False, epochs=1)
 
-    # prediction.train_rnn_tanh(dataset, retrain=False, epochs=1)
-    # out4 = prediction.predict_rnn_tanh(code, trading_day1)
-    # print('预测结果', out4)
-    #
-    # prediction.train_rnn_relu(dataset, retrain=False, epochs=1)
-    # out5 = prediction.predict_rnn_relu(code, trading_day1)
-    # print('预测结果', out5)
+    prediction.train_rnn_tanh(dataset, retrain=False, epochs=1)
+
+    prediction.train_rnn_relu(dataset, retrain=False, epochs=1)
 
     prediction.train_resnet18(dataset, retrain=False, epochs=1)
 
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
-    plt.figure(figsize=[20, 14], dpi=200)
-    for k, code in enumerate(dataset.stocks_codes[5:9]):
-        plt.subplot(2, 2, k+1)
-        print(f'正在绘制第{k+1}张图片')
-        df = pd.read_csv('./data/stocks/' + code + '.csv')
-        trading_dates = df['date']
-        x_r = range(0, len(trading_dates))
-        x_ticks = list(x_r[::100])
-        x_ticks.append(x_r[-1])
-        x_labels = [trading_dates[i] for i in x_ticks]
-        true_close = df['close'].values
-        print('计算CNN')
-        cnn_close = [true_close[j]*(1+prediction.predict_cnn(code, (0, j))) for j in range(len(trading_dates))]
-        print('计算LSTM')
-        lstm_close = [true_close[j]*(1+prediction.predict_lstm(code, (0, j))) for j in range(len(trading_dates))]
-        # print('计算GRU')
-        # gru_close = [true_close[j]*(1+prediction.predict_gru(code, (0, j))) for j in range(len(trading_dates))]
-        print('计算ResNet18')
-        rn18_close = [true_close[j]*(1+prediction.predict_resnet18(code, (0, j)))
+    plt.figure(figsize=[20, 20], dpi=160)
+    code = 'sh.600000'
+    df = pd.read_csv('./data/stocks/' + code + '.csv')
+    trading_dates = df['date']
+    x_r = range(0, len(trading_dates))
+    x_ticks = list(x_r[::100])
+    x_ticks.append(x_r[-1])
+    x_labels = [trading_dates[i] for i in x_ticks]
+    true_close = df['close'].values
+    print('计算CNN')
+    cnn_close = [true_close[j]*(1+prediction.predict_cnn(code, (0, j))) for j in range(len(trading_dates))]
+    print('计算LSTM')
+    lstm_close = [true_close[j]*(1+prediction.predict_lstm(code, (0, j))) for j in range(len(trading_dates))]
+    print('计算GRU')
+    gru_close = [true_close[j]*(1+prediction.predict_gru(code, (0, j))) for j in range(len(trading_dates))]
+    print('计算RNN_tanh')
+    rnn_tanh_close = [true_close[j] * (1 + prediction.predict_rnn_tanh(code, (0, j)))
                       for j in range(len(trading_dates))]
+    print('计算RNN_relu')
+    rnn_relu_close = [true_close[j] * (1 + prediction.predict_rnn_relu(code, (0, j)))
+                      for j in range(len(trading_dates))]
+    print('计算ResNet18')
+    rn18_close = [true_close[j]*(1+prediction.predict_resnet18(code, (0, j)))
+                  for j in range(len(trading_dates))]
+
+    def sp(i, predict_close, label_name):
+        plt.subplot(3, 2, i)
         plt.plot(x_r, true_close, label='真实值')
-        plt.plot(x_r, cnn_close, label='CNN模型预测值')
-        plt.plot(x_r, lstm_close, label='LSTM模型预测值')
-        # plt.plot(x_r, gru_close, label='GRU模型预测值')
-        plt.plot(x_r, rn18_close, label='ResNet18模型预测值')
+        plt.plot(x_r, predict_close, label=label_name)
         plt.ylabel('收盘价')
         plt.xticks(x_ticks, x_labels)
         plt.legend()
+
+    sp(1, cnn_close, 'CNN模型预测值')
+    sp(2, lstm_close, 'LSTM模型预测值')
+    sp(3, gru_close, 'GRU模型预测值')
+    sp(4, rnn_tanh_close, 'RNN_tanh模型预测值')
+    sp(5, rnn_relu_close, 'RNN_relu模型预测值')
+    sp(6, rn18_close, 'ResNet18模型预测值')
+
     plt.savefig('predict.jpg')
