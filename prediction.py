@@ -15,12 +15,14 @@ import numpy as np
 from tqdm import tqdm
 import os
 import matplotlib.pyplot as plt
+from collections import OrderedDict
 
 # 运行设备
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def return_rate_transform(return_rate):
+    """按收益率分布转换为数值分类模型"""
     if return_rate < -0.093:
         return -1.0
     elif return_rate < -0.053:
@@ -44,6 +46,7 @@ def return_rate_transform(return_rate):
 
 
 class StockDataset(Dataset):
+    """沪深300股票训练数据集"""
     def __init__(self, data_days=10, remake_data=False):
         super(StockDataset, self).__init__()
         # 存储路径
@@ -136,6 +139,7 @@ class CNNModel(nn.Module):
 
 
 class RNNModel(nn.Module):
+    """LSTM,GRU,使用tanh与relu激活的RNN四种结构模型"""
     def __init__(self, rnn_type, input_size, hidden_size, n_layers):
         super(RNNModel, self).__init__()
         if rnn_type in ['LSTM', 'GRU']:
@@ -169,8 +173,8 @@ class RNNModel(nn.Module):
         return x
 
 
-# 用于ResNet18和34的残差块，用的是2个3x3的卷积
 class BasicBlock(nn.Module):
+    """用于ResNet18和34的残差块，用的是2个3x3的卷积"""
     expansion = 1
 
     def __init__(self, in_planes, planes, stride=1):
@@ -199,8 +203,8 @@ class BasicBlock(nn.Module):
         return out
 
 
-# 用于ResNet50,101和152的残差块，用的是1x1+3x3+1x1的卷积
 class Bottleneck(nn.Module):
+    """用于ResNet50,101和152的残差块，用的是1x1+3x3+1x1的卷积"""
     # 前面1x1和3x3卷积的filter个数相等，最后1x1卷积是其expansion倍
     expansion = 4
 
@@ -233,6 +237,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
+    """实现将ResNet迁移应用于股票预测"""
     def __init__(self, block, num_blocks, num_classes=2):
         super(ResNet, self).__init__()
         self.in_planes = 64
@@ -289,6 +294,116 @@ def ResNet152():
     return ResNet(Bottleneck, [3, 8, 36, 3])
 
 
+class DenseLayer(nn.Sequential):
+    def __init__(self, in_channels, growth_rate, bn_size):
+        super(DenseLayer, self).__init__()
+        self.add_module('norm1', nn.BatchNorm2d(in_channels))
+        self.add_module('relu1', nn.ReLU(inplace=True))
+        self.add_module('conv1', nn.Conv2d(in_channels, bn_size * growth_rate,
+                                           kernel_size=1,
+                                           stride=1, bias=False))
+        self.add_module('norm2', nn.BatchNorm2d(bn_size*growth_rate))
+        self.add_module('relu2', nn.ReLU(inplace=True))
+        self.add_module('conv2', nn.Conv2d(bn_size*growth_rate, growth_rate,
+                                           kernel_size=3,
+                                           stride=1, padding=1, bias=False))
+
+    # 重载forward函数
+    def forward(self, x):
+        new_features = super(DenseLayer, self).forward(x)
+        return torch.cat([x, new_features], 1)
+
+
+class DenseBlock(nn.Sequential):
+    def __init__(self, num_layers, in_channels, bn_size, growth_rate):
+        super(DenseBlock, self).__init__()
+        for i in range(num_layers):
+            self.add_module('denselayer%d' % (i+1),
+                            DenseLayer(in_channels + growth_rate * i,
+                                       growth_rate, bn_size))
+
+
+class Transition(nn.Sequential):
+    def __init__(self, in_channels, out_channels):
+        super(Transition, self).__init__()
+        self.add_module('norm', nn.BatchNorm2d(in_channels))
+        self.add_module('relu', nn.ReLU(inplace=True))
+        self.add_module('conv', nn.Conv2d(in_channels, out_channels,
+                                          kernel_size=1,
+                                          stride=1, bias=False))
+        self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
+
+
+class DenseNetBC(nn.Module):
+    def __init__(self, growth_rate=12, block_config=(6, 12, 24, 16),
+                 bn_size=4, theta=0.5, num_classes=2):
+        super(DenseNetBC, self).__init__()
+
+        # 初始的卷积为filter:2倍的growth_rate
+        num_init_feature = 2 * growth_rate
+
+        # 原DenseNet对cifar-10与ImageNet的分别初始化
+        # if num_classes == 10:
+        #     self.features = nn.Sequential(OrderedDict([
+        #         ('conv0', nn.Conv2d(3, num_init_feature,
+        #                             kernel_size=3, stride=1,
+        #                             padding=1, bias=False)),
+        #     ]))
+        # else:
+        #     self.features = nn.Sequential(OrderedDict([
+        #         ('conv0', nn.Conv2d(3, num_init_feature,
+        #                             kernel_size=7, stride=2,
+        #                             padding=3, bias=False)),
+        #         ('norm0', nn.BatchNorm2d(num_init_feature)),
+        #         ('relu0', nn.ReLU(inplace=True)),
+        #         ('pool0', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+        #     ]))
+        self.features = nn.Sequential(OrderedDict([
+            ('conv0', nn.Conv2d(1, num_init_feature,
+                                kernel_size=3, stride=1,
+                                padding=1, bias=False)),
+        ]))
+
+        num_feature = num_init_feature
+        for i, num_layers in enumerate(block_config):
+            self.features.add_module('denseblock%d' % (i+1),
+                                     DenseBlock(num_layers, num_feature,
+                                                bn_size, growth_rate))
+            num_feature = num_feature + growth_rate * num_layers
+            if i != len(block_config)-1:
+                self.features.add_module('transition%d' % (i + 1),
+                                         Transition(num_feature,
+                                                    int(num_feature * theta)))
+                num_feature = int(num_feature * theta)
+
+        self.features.add_module('norm5', nn.BatchNorm2d(num_feature))
+        self.features.add_module('relu5', nn.ReLU(inplace=True))
+        self.features.add_module('avg_pool', nn.AdaptiveAvgPool2d((1, 1)))
+
+        self.linear = nn.Linear(num_feature, num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        # 增加一个1的维度(图像处理中为RGB维度)
+        x = x.view(x.size()[0], 1, x.size()[1], x.size()[2])
+        features = self.features(x)
+        out = features.view(features.size(0), -1)
+        out = self.linear(out)
+        return out
+
+
+def dense_net_BC_100():
+    return DenseNetBC(growth_rate=12, block_config=(16, 16, 16))
+
+
 class Prediction:
     def __init__(self, data_days=10, batch_size=50):
         # 策略所需数据天数
@@ -333,6 +448,9 @@ class Prediction:
         self.resnet101 = ResNet101().to(device)
         self.resnet152 = ResNet152().to(device)
 
+        # DenseNet模型
+        self.densenet = dense_net_BC_100().to(device)
+
         # 使用MSE误差
         self.criterion = nn.MSELoss()
         # 使用AdamW优化器 默认参数
@@ -346,6 +464,7 @@ class Prediction:
         self.rn50_optimizer = torch.optim.AdamW(self.resnet50.parameters())
         self.rn101_optimizer = torch.optim.AdamW(self.resnet101.parameters())
         self.rn152_optimizer = torch.optim.AdamW(self.resnet152.parameters())
+        self.densenet_optimizer = torch.optim.AdamW(self.densenet.parameters())
 
     def __train(self, model_name, model, optim, train_dataset, epochs=2):
         # 生成训练数据
@@ -427,6 +546,51 @@ class Prediction:
             return
         self.__train('resnet18', self.resnet18, self.rn18_optimizer, train_dataset, epochs)
 
+    def train_resnet34(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}resnet34.pt'.format(self.base_data_path)):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.resnet34 = torch.load('{}resnet34.pt'.format(self.base_data_path))
+            return
+        self.__train('resnet34', self.resnet34, self.rn34_optimizer, train_dataset, epochs)
+
+    def train_resnet50(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}resnet50.pt'.format(self.base_data_path)):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.resnet50 = torch.load('{}resnet50.pt'.format(self.base_data_path))
+            return
+        self.__train('resnet50', self.resnet50, self.rn50_optimizer, train_dataset, epochs)
+
+    def train_resnet101(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}resnet101.pt'.format(self.base_data_path)):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.resnet101 = torch.load('{}resnet101.pt'.format(self.base_data_path))
+            return
+        self.__train('resnet101', self.resnet101, self.rn101_optimizer, train_dataset, epochs)
+
+    def train_resnet152(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}resnet152.pt'.format(self.base_data_path)):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.resnet152 = torch.load('{}resnet152.pt'.format(self.base_data_path))
+            return
+        self.__train('resnet152', self.resnet152, self.rn152_optimizer, train_dataset, epochs)
+
+    def train_densenet(self, train_dataset, epochs=2, retrain=False):
+        if not os.path.exists('{}densenet.pt'.format(self.base_data_path)):
+            retrain = True
+        if not retrain:
+            # 读取训练好的模型
+            self.densenet = torch.load('{}densenet.pt'.format(self.base_data_path))
+            return
+        self.__train('densenet', self.densenet, self.densenet_optimizer, train_dataset, epochs)
+
     def __predict_data(self, stock_code: str, today: tuple, abs_date=False):
         stock_data = pd.read_csv('{}{}.csv'.format(self.data_path, stock_code))
         # 当前日期在数据集中序号
@@ -452,7 +616,7 @@ class Prediction:
         with torch.no_grad():
             # 前向传播 输出结果
             output = model.forward(stock_data)
-            return output[0, 0]
+            return output
 
     def predict_cnn(self, stock_code: str, today: tuple):
         return self.__predict(self.cnn, stock_code, today)
@@ -472,10 +636,25 @@ class Prediction:
     def predict_resnet18(self, stock_code: str, today: tuple):
         return self.__predict(self.resnet18, stock_code, today)
 
+    def predict_resnet34(self, stock_code: str, today: tuple):
+        return self.__predict(self.resnet34, stock_code, today)
+
+    def predict_resnet50(self, stock_code: str, today: tuple):
+        return self.__predict(self.resnet50, stock_code, today)
+
+    def predict_resnet101(self, stock_code: str, today: tuple):
+        return self.__predict(self.resnet101, stock_code, today)
+
+    def predict_resnet152(self, stock_code: str, today: tuple):
+        return self.__predict(self.resnet152, stock_code, today)
+
+    def predict_densenet(self, stock_code: str, today: tuple):
+        return self.__predict(self.densenet, stock_code, today)
+
 
 if __name__ == '__main__':
     dataset = StockDataset(data_days=10, remake_data=False)
-    print(len(dataset))
+    print('训练集大小:', len(dataset))
 
     prediction = Prediction(data_days=10, batch_size=200)
 
@@ -485,57 +664,90 @@ if __name__ == '__main__':
     # print(return_rate_transform(p1), p2, p3, p4)
 
     prediction.train_cnn(dataset, retrain=False, epochs=1)
-
     prediction.train_lstm(dataset, retrain=False, epochs=1)
-
-    prediction.train_gru(dataset, retrain=False, epochs=1)
-
-    prediction.train_rnn_tanh(dataset, retrain=False, epochs=1)
-
+    # GRU与tanhRNN效果不佳 抛弃
+    # prediction.train_gru(dataset, retrain=False, epochs=1)
+    # prediction.train_rnn_tanh(dataset, retrain=False, epochs=1)
     prediction.train_rnn_relu(dataset, retrain=False, epochs=1)
-
     prediction.train_resnet18(dataset, retrain=False, epochs=1)
+    prediction.train_resnet34(dataset, retrain=False, epochs=1)
+    prediction.train_resnet50(dataset, retrain=False, epochs=1)
+    prediction.train_resnet101(dataset, retrain=False, epochs=1)
+    prediction.train_resnet152(dataset, retrain=False, epochs=1)
+    prediction.train_densenet(dataset, retrain=False, epochs=1)
 
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
-    plt.figure(figsize=[20, 20], dpi=160)
-    code = 'sh.600000'
-    df = pd.read_csv('./data/stocks/' + code + '.csv')
-    trading_dates = df['date']
-    x_r = range(0, len(trading_dates))
-    x_ticks = list(x_r[::100])
-    x_ticks.append(x_r[-1])
-    x_labels = [trading_dates[i] for i in x_ticks]
-    true_close = df['close'].values
-    print('计算CNN')
-    cnn_close = [true_close[j]*(1+prediction.predict_cnn(code, (0, j))) for j in range(len(trading_dates))]
-    print('计算LSTM')
-    lstm_close = [true_close[j]*(1+prediction.predict_lstm(code, (0, j))) for j in range(len(trading_dates))]
-    print('计算GRU')
-    gru_close = [true_close[j]*(1+prediction.predict_gru(code, (0, j))) for j in range(len(trading_dates))]
-    print('计算RNN_tanh')
-    rnn_tanh_close = [true_close[j] * (1 + prediction.predict_rnn_tanh(code, (0, j)))
+    plt.figure(figsize=[30, 15], dpi=160)
+    for code in dataset.stocks_codes[:5]:
+        print('正在绘制'+code+'预测图像')
+        plt.clf()
+        df = pd.read_csv('./data/stocks/' + code + '.csv')
+        trading_dates = df['date']
+        x_r = range(0, len(trading_dates))
+        x_ticks = list(x_r[::100])
+        x_ticks.append(x_r[-1])
+        x_labels = [trading_dates[i] for i in x_ticks]
+        true_close = df['close'].values
+
+        def close_p(x):
+            if type(x) == int:
+                return x
+            x = x[0, 1].item()
+            return x if 0.2 > x > -0.2 else 0.0
+
+        print('计算CNN')
+        cnn_close = [true_close[j]*(1+close_p(prediction.predict_cnn(code, (0, j))))
+                     for j in range(len(trading_dates))]
+        print('计算LSTM')
+        lstm_close = [true_close[j]*(1+close_p(prediction.predict_lstm(code, (0, j))))
                       for j in range(len(trading_dates))]
-    print('计算RNN_relu')
-    rnn_relu_close = [true_close[j] * (1 + prediction.predict_rnn_relu(code, (0, j)))
+        # print('计算GRU')
+        # gru_close = [true_close[j]*(1+close_p(prediction.predict_gru(code, (0, j))))
+        #              for j in range(len(trading_dates))]
+        # print('计算RNN_tanh')
+        # rnn_tanh_close = [true_close[j] * (1 + close_p(prediction.predict_rnn_tanh(code, (0, j))))
+        #                   for j in range(len(trading_dates))]
+        print('计算RNN_relu')
+        rnn_relu_close = [true_close[j] * (1 + close_p(prediction.predict_rnn_relu(code, (0, j))))
+                          for j in range(len(trading_dates))]
+        print('计算ResNet18')
+        rn18_close = [true_close[j]*(1+close_p(prediction.predict_resnet18(code, (0, j))))
                       for j in range(len(trading_dates))]
-    print('计算ResNet18')
-    rn18_close = [true_close[j]*(1+prediction.predict_resnet18(code, (0, j)))
-                  for j in range(len(trading_dates))]
+        print('计算ResNet34')
+        rn34_close = [true_close[j]*(1+close_p(prediction.predict_resnet34(code, (0, j))))
+                      for j in range(len(trading_dates))]
+        print('计算ResNet50')
+        rn50_close = [true_close[j]*(1+close_p(prediction.predict_resnet50(code, (0, j))))
+                      for j in range(len(trading_dates))]
+        print('计算ResNet101')
+        rn101_close = [true_close[j]*(1+close_p(prediction.predict_resnet101(code, (0, j))))
+                       for j in range(len(trading_dates))]
+        print('计算ResNet152')
+        rn152_close = [true_close[j]*(1+close_p(prediction.predict_resnet152(code, (0, j))))
+                       for j in range(len(trading_dates))]
+        print('计算DenseNet')
+        densenet_close = [true_close[j]*(1+close_p(prediction.predict_densenet(code, (0, j))))
+                          for j in range(len(trading_dates))]
 
-    def sp(i, predict_close, label_name):
-        plt.subplot(3, 2, i)
-        plt.plot(x_r, true_close, label='真实值')
-        plt.plot(x_r, predict_close, label=label_name)
-        plt.ylabel('收盘价')
-        plt.xticks(x_ticks, x_labels)
-        plt.legend()
+        def sp(i, predict_close, label_name):
+            plt.subplot(3, 3, i)
+            plt.plot(x_r, true_close, label='真实值')
+            plt.plot(x_r, predict_close, label=label_name)
+            plt.ylabel('收盘价')
+            plt.xticks(x_ticks, x_labels)
+            plt.legend()
 
-    sp(1, cnn_close, 'CNN模型预测值')
-    sp(2, lstm_close, 'LSTM模型预测值')
-    sp(3, gru_close, 'GRU模型预测值')
-    sp(4, rnn_tanh_close, 'RNN_tanh模型预测值')
-    sp(5, rnn_relu_close, 'RNN_relu模型预测值')
-    sp(6, rn18_close, 'ResNet18模型预测值')
+        sp(1, cnn_close, 'CNN模型预测值')
+        sp(2, lstm_close, 'LSTM模型预测值')
+        # sp(3, gru_close, 'GRU模型预测值')
+        # sp(4, rnn_tanh_close, 'RNN_tanh模型预测值')
+        sp(3, rnn_relu_close, 'RNN_relu模型预测值')
+        sp(4, rn18_close, 'ResNet18模型预测值')
+        sp(5, rn34_close, 'ResNet34模型预测值')
+        sp(6, rn34_close, 'ResNet50模型预测值')
+        sp(7, rn101_close, 'ResNet101模型预测值')
+        sp(8, rn101_close, 'ResNet152模型预测值')
+        sp(9, densenet_close, 'DenseNet模型预测值')
 
-    plt.savefig('predict.jpg')
+        plt.savefig(code+'_predict.jpg')
