@@ -28,13 +28,11 @@
 
 用动量因子(MF)进行选股
 
-用换手率因子(TR)进行选股（思路参考自Liu et al.(2019) Size and value in China, 修改了数据选取)
+用换手率因子(TR)进行选股(思路参考自Liu et al.(2019) Size and value in China, 修改了数据选取)
 
-用LSTM预测模型进行选股
+用LSTM与reluRNN预测模型进行选股
 
-用GRU预测模型进行选股
-
-用两种激活函数的RNN预测模型进行选股
+用GRU与tanhRNN预测模型进行选股(效果不佳已放弃)
 
 用ResNet18,34,50预测模型进行选股
 
