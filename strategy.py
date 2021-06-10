@@ -35,10 +35,15 @@ class Strategy:
         self.prediction = Prediction(data_days=data_days, batch_size=50)
         self.prediction.train_cnn(self.dataset, retrain=False, epochs=2)
         self.prediction.train_lstm(self.dataset, retrain=False, epochs=2)
-        self.prediction.train_gru(self.dataset, retrain=False, epochs=2)
+        # self.prediction.train_gru(self.dataset, retrain=False, epochs=2)
         # self.prediction.train_rnn_tanh(self.dataset, retrain=False, epochs=2)
-        # self.prediction.train_rnn_relu(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_rnn_relu(self.dataset, retrain=False, epochs=2)
         self.prediction.train_resnet18(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_resnet34(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_resnet50(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_resnet101(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_resnet152(self.dataset, retrain=False, epochs=2)
+        self.prediction.train_densenet(self.dataset, retrain=False, epochs=2)
 
     def choose_by_bm(self, today: tuple, number: int):
         """
@@ -182,10 +187,10 @@ class Strategy:
         avail_num = 0
         # 预测每只股票未来data_days天涨跌幅
         for stock_code in self.stocks_codes:
-            change = getattr(self.prediction, 'predict_'+model_type)(stock_code, today)
+            change = getattr(self.prediction, 'predict_' + model_type)(stock_code, today)
             if type(change) != int:
                 # tensor直接取值
-                change = change.item()
+                change = change[0, 0].item()
             if change > 0:
                 # 去除小于0的预测值
                 stocks_data.loc[stock_code, 'change'] = change
@@ -216,3 +221,36 @@ class Strategy:
 
     def choose_by_resnet18(self, today: tuple, number: int):
         return self.__nn_choose('resnet18', today, number)
+
+    def choose_by_resnet34(self, today: tuple, number: int):
+        return self.__nn_choose('resnet34', today, number)
+
+    def choose_by_resnet50(self, today: tuple, number: int):
+        return self.__nn_choose('resnet50', today, number)
+
+    def choose_by_resnet101(self, today: tuple, number: int):
+        return self.__nn_choose('resnet101', today, number)
+
+    def choose_by_resnet152(self, today: tuple, number: int):
+        return self.__nn_choose('resnet152', today, number)
+
+    def choose_by_densenet(self, today: tuple, number: int):
+        return self.__nn_choose('densenet', today, number)
+
+    def choose_by_ensemble(self, today: tuple):
+        chosen_num = pd.DataFrame()
+        chosen_num['code'] = self.stocks_codes
+        chosen_num['num'] = 0
+        chosen_num.set_index('code', inplace=True)
+        number = 300
+        for chosen in (self.__nn_choose('cnn', today, number),
+                       self.__nn_choose('lstm', today, number),
+                       self.__nn_choose('rnn_relu', today, number),
+                       self.__nn_choose('resnet18', today, number),
+                       self.__nn_choose('resnet34', today, number),
+                       self.__nn_choose('resnet50', today, number),
+                       self.__nn_choose('densenet', today, number)):
+            for stock_code in self.stocks_codes:
+                if stock_code in chosen:
+                    chosen_num.loc[stock_code, 'num'] += 1
+        return chosen_num[chosen_num['num'] >= 3].index
