@@ -36,7 +36,11 @@
 
 用两种激活函数的RNN预测模型进行选股
 
-用ResNet18预测模型进行选股
+用ResNet18,34,50预测模型进行选股
+
+用DenseNet预测模型进行选股
+
+用综合几种网络预测结果的集成学习策略进行选股
 
 其余策略待更新
 
@@ -44,13 +48,33 @@
 
 使用CNN对股票数据进行预测
 
-使用LSTM，GRU，两种激活函数的RNN对股票数据进行预测
+使用LSTM与reluRNN对股票数据进行预测(GRU与tanhRNN由于效果不佳放弃)
 
-使用ResNet18对股票数据进行预测
+使用ResNet18,34,50对股票数据进行预测(101与152由于效果不佳放弃)
+
+使用DenseNet对股票数据进行预测
 
 当前预测结果
 
-![predict](predict.jpg)
+sh.600000,浦发银行
+
+![1](sh.600000_predict.jpg)
+
+sh.600004,白云机场
+
+![2](sh.600004_predict.jpg)
+
+sh.600009,上海机场
+
+![3](sh.600009_predict.jpg)
+
+sh.600010,包钢股份
+
+![4](sh.600010_predict.jpg)
+
+sh.600011,华能国际
+
+![5](sh.600011_predict.jpg)
 
 ## tushare_apikey.txt
 
@@ -83,3 +107,7 @@
 ## result.jpg
 
 回测结果展示图片
+
+## *_predict.jpg
+
+单只股票预测结果展示图片
