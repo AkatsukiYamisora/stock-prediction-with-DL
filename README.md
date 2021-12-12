@@ -6,7 +6,7 @@
 ![GitHub watchers](https://img.shields.io/github/watchers/AkatsukiYamisora/stock-prediction-with-DL?style=social)
 ![GitHub Repo stars](https://img.shields.io/github/stars/AkatsukiYamisora/stock-prediction-with-DL?style=social)
 
-先开一个坑，慢慢做
+目前新增了100多个技术指标，优化了一部分代码，正在做图神经网络部分内容，预计做一个小论文，等论文见刊再更新仓库^-^
 
 ## data_downloader.py
 
